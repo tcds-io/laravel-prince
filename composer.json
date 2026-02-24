@@ -1,0 +1,45 @@
+{
+  "name": "tcds-io/laravel-model-api",
+  "description": "A Simple way to create rest API resources for your Laravel models.",
+  "type": "library",
+  "license": "MIT",
+  "minimum-stability": "dev",
+  "require": {
+    "php": ">=8.4",
+    "ext-json": "*",
+    "laravel/framework": "^12.0.0"
+  },
+  "require-dev": {
+    "symfony/var-dumper": "^7.0",
+    "phpstan/phpstan": "^2.1",
+    "phpunit/phpunit": "^12.3",
+    "php-cs-fixer/shim": "^3.88",
+    "orchestra/testbench": "10.x-dev"
+  },
+  "autoload": {
+    "psr-4": {
+      "Tcds\\Io\\Prince\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Test\\Tcds\\Io\\Prince\\": "tests/"
+    }
+  },
+  "scripts": {
+    "cs:check": "vendor/bin/php-cs-fixer check -v ./",
+    "cs:fix": "vendor/bin/php-cs-fixer fix ./",
+    "test:stan": "vendor/bin/phpstan analyse src --level=max --ansi",
+    "test:unit": "vendor/bin/phpunit --testdox --color=always",
+    "tests": [
+      "@cs:check",
+      "@test:stan",
+      "@test:unit"
+    ]
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": false
+    }
+  }
+}
