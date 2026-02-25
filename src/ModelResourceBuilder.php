@@ -39,11 +39,11 @@ final class ModelResourceBuilder
      */
     public static function create(
         array $userPermissions = [
-            'model:list',
-            'model:get',
-            'model:create',
-            'model:update',
-            'model:delete',
+            'default-model:list',
+            'default-model:get',
+            'default-model:create',
+            'default-model:update',
+            'default-model:delete',
         ],
     ): self {
         return new self($userPermissions);
@@ -66,11 +66,11 @@ final class ModelResourceBuilder
         ?string $fragment = null,
         ?string $foreignKey = null,
         array $resourcePermissions = [
-            'list' => 'model:list',
-            'get' => 'model:get',
-            'create' => 'model:create',
-            'update' => 'model:update',
-            'delete' => 'model:delete',
+            'list' => 'default-model:list',
+            'get' => 'default-model:get',
+            'create' => 'default-model:create',
+            'update' => 'default-model:update',
+            'delete' => 'default-model:delete',
         ],
     ): self {
         $nestedBuilder = new self($this->userPermissions);

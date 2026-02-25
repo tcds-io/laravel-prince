@@ -14,7 +14,7 @@ abstract class ModelResourceTestCase extends TestCase
 {
     protected const array SCHEMA = [
         ['name' => 'id', 'type' => 'integer'],
-        ['name' => 'title', 'type' => 'varchar'],
+        ['name' => 'title', 'type' => 'text'],
         ['name' => 'amount', 'type' => 'number'],
         ['name' => 'created_at', 'type' => 'datetime'],
         ['name' => 'updated_at', 'type' => 'datetime'],

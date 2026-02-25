@@ -1,42 +1,34 @@
 # Laravel Model API
 
-Turn any Eloquent model into a fully working REST API with a single line of code.
+Turn any Eloquent model into a fully working REST API — no controllers, no form requests, no manual routes.
 
 ```php
-ModelResource::of(Invoice::class);
+ModelResourceBuilder::create(userPermissions: $user->permissions)
+    ->resource(Invoice::class)
+    ->resource(Product::class)
+    ->routes();
 ```
-
-That's it. No controllers. No form requests. No manual routes.
 
 ---
 
 ## What you get
 
-Calling `ModelResource::of(Invoice::class)` on a model with `$table = 'invoices'` instantly registers:
+For every registered model the following routes are created automatically, using the model's `$table` as the URL segment:
 
-| Method   | Path               | Action             |
-|----------|--------------------|--------------------|
-| `GET`    | `/invoices`        | Paginated list     |
-| `GET`    | `/invoices/{id}`   | Single record      |
-| `POST`   | `/invoices`        | Create             |
-| `PATCH`  | `/invoices/{id}`   | Update             |
-| `DELETE` | `/invoices/{id}`   | Delete             |
+| Method   | Path                  | Action                              |
+|----------|-----------------------|-------------------------------------|
+| `GET`    | `/invoices`           | Paginated list                      |
+| `GET`    | `/invoices/_schema`   | Column schema + nested resource names |
+| `GET`    | `/invoices/{id}`      | Single record (+ embedded nested lists) |
+| `POST`   | `/invoices`           | Create                              |
+| `PATCH`  | `/invoices/{id}`      | Update                              |
+| `DELETE` | `/invoices/{id}`      | Delete                              |
 
-Every response includes a `meta.schema` block so clients always know the exact shape of the resource — no separate documentation needed.
+And when global search is enabled:
 
-```json
-{
-  "data": { "id": 1, "status": "active", "amount": 149.99 },
-  "meta": {
-    "resource": "invoices",
-    "schema": [
-      { "name": "id",     "type": "integer" },
-      { "name": "status", "type": "enum", "values": ["draft", "active", "cancelled"] },
-      { "name": "amount", "type": "number" }
-    ]
-  }
-}
-```
+| Method | Path      | Action                                                   |
+|--------|-----------|----------------------------------------------------------|
+| `GET`  | `/search` | Full-text search across all opted-in resources           |
 
 ---
 
@@ -52,26 +44,208 @@ Laravel auto-discovers the package. No extra configuration needed.
 
 ## Usage
 
-Register your model resources inside `routes/api.php` (or anywhere your routes are loaded):
+Register your resources inside `routes/api.php`:
 
 ```php
-use Tcds\Io\Prince\ModelResource;
+use Tcds\Io\Prince\ModelResourceBuilder;
 
-Route::prefix('/api')
-    ->group(function () {
-         ModelResource::of(Invoice::class);
-         ModelResource::of(Product::class);
-         ModelResource::of(Customer::class);
-    });
+Route::prefix('/api/backoffice')->group(function () {
+    ModelResourceBuilder::create(userPermissions: $request->user()->permissions)
+        ->resource(Invoice::class, globalSearch: true)
+        ->resource(Product::class, globalSearch: true)
+        ->routes();
+});
 ```
 
-The package reads the model's `$table` and `$casts` properties to determine the route prefix and column types automatically.
+The package reads each model's `$table` and `$casts` properties to determine route prefixes and column types — nothing to configure.
+
+---
+
+## Nested resources
+
+Register sub-resources via a callback. Nested routes are scoped to the parent automatically, and the parent's FK is inferred from the table name (`invoice_id` for `invoices`):
+
+```php
+ModelResourceBuilder::create(userPermissions: $user->permissions)
+    ->resource(
+        model: Invoice::class,
+        resources: fn(ModelResourceBuilder $b) => $b
+            ->resource(InvoiceItem::class),
+    )
+    ->routes();
+```
+
+This registers the full nested route set under `/invoices/{invoiceId}/items`, with every request validated against the parent's existence.
+
+### GET response includes inner lists
+
+`GET /invoices/{id}` automatically embeds each registered nested resource as an inner list — **`$with` eager loads on the model are ignored**, keeping the API shape fully controlled by what you register:
+
+```json
+{
+  "data": {
+    "id": 1,
+    "title": "November invoice",
+    "amount": 299.00,
+    "items": [
+      { "id": 10, "description": "Widget A", "price": 49.00, "_resource": "/invoices/1/items/10" },
+      { "id": 11, "description": "Widget B", "price": 99.00, "_resource": "/invoices/1/items/11" }
+    ]
+  },
+  "meta": {
+    "resource": "invoices",
+    "schema": [...],
+    "resources": ["items"]
+  }
+}
+```
+
+---
+
+## List responses
+
+Every item in a paginated list includes a `_resource` field — the direct URL to that record, including any outer route prefix and parent path for nested resources:
+
+```json
+{
+  "data": [
+    { "id": 1, "title": "Invoice A", "_resource": "/api/backoffice/invoices/1" },
+    { "id": 2, "title": "Invoice B", "_resource": "/api/backoffice/invoices/2" }
+  ],
+  "meta": {
+    "resource": "invoices",
+    "schema": [...],
+    "current_page": 1,
+    "per_page": 10,
+    "total": 2,
+    "last_page": 1
+  }
+}
+```
+
+### Pagination
+
+Control page size with `?limit=N` (default `10`, max `100`):
+
+```
+GET /invoices?limit=25
+GET /invoices?limit=25&page=2
+```
+
+---
+
+## Filtering
+
+### Full-text search
+
+`?search=value` matches against all non-datetime columns using OR. Operators are inferred from the value:
+
+```
+GET /invoices?search=acme          → exact match across all text columns
+GET /invoices?search=%acme%        → LIKE match
+```
+
+### Column filter
+
+`?{column}=value` filters on a specific column. The same operator inference applies:
+
+```
+GET /invoices?title=%acme%         → LIKE
+GET /invoices?amount=>100          → greater than 100
+GET /invoices?amount=<=500         → less than or equal to 500
+GET /invoices?amount=100/500       → between 100 and 500
+GET /invoices?status=active        → exact match (also works for enums)
+```
+
+**Operator reference**
+
+| Value pattern  | Operator            | Column types            |
+|----------------|---------------------|-------------------------|
+| `%foo%`        | `LIKE`              | text, enum              |
+| `>N`           | `>`                 | integer, number, datetime |
+| `<N`           | `<`                 | integer, number, datetime |
+| `>=N`          | `>=`                | integer, number, datetime |
+| `<=N`          | `<=`                | integer, number, datetime |
+| `from/to`      | `BETWEEN`           | integer, number, datetime |
+| anything else  | `=`                 | all                     |
+
+---
+
+## Global search
+
+Opt any resource into cross-resource full-text search with `globalSearch: true`. A single `GET /search?q=value` endpoint is registered covering all opted-in resources:
+
+```php
+ModelResourceBuilder::create(userPermissions: $user->permissions)
+    ->resource(Invoice::class, globalSearch: true)
+    ->resource(Product::class, globalSearch: true)
+    ->resource(Customer::class)          // excluded from search
+    ->routes();
+```
+
+```
+GET /search?q=acme
+GET /search?q=%acme%    → LIKE
+```
+
+```json
+{
+  "data": [
+    { "id": 1, "description": "Acme Corp", "resource": "invoices", "link": "/api/backoffice/invoices/1" },
+    { "id": 7, "description": "Acme Widget", "resource": "products", "link": "/api/backoffice/products/7" }
+  ]
+}
+```
+
+Each result has `id`, `description` (first matching text column), `resource` (table name), and `link` (full URL including any outer route prefix). Each record appears at most once per resource even when multiple text columns match.
+
+---
+
+## Permissions
+
+### User permissions
+
+The permissions the current user holds. Shared across all resources in the builder — pass once, applied everywhere:
+
+```php
+ModelResourceBuilder::create(userPermissions: $request->user()->permissions)
+    ->resource(Invoice::class)
+    ->resource(Product::class)
+    ->routes();
+```
+
+### Resource permissions
+
+The permission string each action _requires_. Defaults to the strings below; override per resource when your app uses different permission names:
+
+| Action   | Default required permission |
+|----------|-----------------------------|
+| `list`   | `model:list`                |
+| `get`    | `model:get`                 |
+| `create` | `model:create`              |
+| `update` | `model:update`              |
+| `delete` | `model:delete`              |
+
+```php
+ModelResourceBuilder::create(userPermissions: $user->permissions)
+    ->resource(
+        model: Invoice::class,
+        resourcePermissions: [
+            'list'   => 'invoices:read',
+            'get'    => 'invoices:read',
+            'create' => 'invoices:write',
+            'update' => 'invoices:write',
+            'delete' => 'invoices:delete',
+        ],
+    )
+    ->routes();
+```
 
 ---
 
 ## Type inference
 
-The package inspects each database column and applies the right PHP type automatically. The `$casts` property on your model takes priority over the raw DB type.
+The package inspects each database column and applies the right PHP type automatically. `$casts` on your model takes priority over the raw DB type.
 
 | DB / cast type        | API type   | Parsed as              |
 |-----------------------|------------|------------------------|
@@ -80,53 +254,12 @@ The package inspects each database column and applies the right PHP type automat
 | `datetime`            | `datetime` | `Carbon`               |
 | `immutable_datetime`  | `datetime` | `CarbonImmutable`      |
 | Any `BackedEnum`      | `enum`     | `MyEnum::from(...)`    |
-| Anything else         | raw string | passthrough            |
+| Anything else         | `text`     | passthrough            |
 
-For enums, the valid values are automatically included in the schema response:
+Enum values are automatically included in the schema:
 
 ```json
 { "name": "status", "type": "enum", "values": ["draft", "active", "cancelled"] }
-```
-
----
-
-## Permissions
-
-Every route is protected by a permission guard out of the box. By default the package has the following permission strings to be present for the request to proceed:
-
-| Action   | Required permission |
-|----------|---------------------|
-| `list`   | `model:list`        |
-| `get`    | `model:get`         |
-| `create` | `model:create`      |
-| `update` | `model:update`      |
-| `delete` | `model:delete`      |
-
-Pass the user's current permissions as the second argument:
-
-```php
-ModelResource::of(
-    model: Invoice::class,
-    userPermissions: $request->user()->permissions,
-);
-```
-
-### Custom permission names
-
-Override the required permission for any action via the third argument:
-
-```php
-ModelResource::of(
-    model: Invoice::class,
-    userPermissions: $request->user()->permissions,
-    actionPermissions: [
-        'list'   => 'invoices:read',
-        'get'    => 'invoices:read',
-        'create' => 'invoices:write',
-        'update' => 'invoices:write',
-        'delete' => 'invoices:delete',
-    ],
-);
 ```
 
 ---
@@ -137,7 +270,20 @@ ModelResource::of(
 |----------------------------------|----------------------------------------|
 | Record not found                 | `404 Not Found`                        |
 | Missing required permission      | `403 Forbidden`                        |
-| Invalid value / constraint error | `400 Bad Request` with DB error detail |
+| Invalid value / constraint error | `400 Bad Request` with error detail    |
+
+---
+
+## Custom URL segment
+
+Override the URL segment with `fragment` when you want a different path than the table name:
+
+```php
+ModelResourceBuilder::create(userPermissions: $user->permissions)
+    ->resource(model: Invoice::class, fragment: 'bills')
+    ->routes();
+// Routes registered at /bills/... — table name remains invoices in meta/schema
+```
 
 ---
 

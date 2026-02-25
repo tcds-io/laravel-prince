@@ -14,7 +14,7 @@ abstract class ModelResourceNestedTestCase extends ModelResourceTestCase
     protected const array NESTED_SCHEMA = [
         ['name' => 'id',          'type' => 'integer'],
         ['name' => 'invoice_id',  'type' => 'integer'],
-        ['name' => 'description', 'type' => 'varchar'],
+        ['name' => 'description', 'type' => 'text'],
         ['name' => 'price',       'type' => 'number'],
         ['name' => 'created_at',  'type' => 'datetime'],
         ['name' => 'updated_at',  'type' => 'datetime'],
