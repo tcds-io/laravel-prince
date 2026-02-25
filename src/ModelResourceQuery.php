@@ -5,6 +5,8 @@ namespace Tcds\Io\Prince;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Throwable;
 
 readonly class ModelResourceQuery
 {
@@ -27,10 +29,14 @@ readonly class ModelResourceQuery
             $query->where($fk, $parentId);
         }
 
-        // ?search=foo — equal match across all columns (OR), LIKE and other operators coming later
+        // ?search=foo — equal match across non-datetime columns (OR); datetime excluded to avoid
+        // unreliable string comparisons against stored timestamp values
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($schema, $search) {
                 foreach ($schema as $column) {
+                    if ($column->type === 'datetime') {
+                        continue;
+                    }
                     $q->orWhere($column->name, $search);
                 }
             });
@@ -63,7 +69,7 @@ readonly class ModelResourceQuery
      *   <=100  → ['<=', 100]      (less than or equal)
      *   10/20  → ['between', [10, 20]]
      *
-     * Text columns support:
+     * Text and enum columns support:
      *   %foo%  → ['like', '%foo%']  (any value containing %)
      *
      * Everything else falls back to ['=', parsedValue].
@@ -73,24 +79,36 @@ readonly class ModelResourceQuery
     private static function parseFilter(ColumnSchema $column, string $raw): array
     {
         $isNumericOrDatetime = in_array($column->type, ['integer', 'number', 'datetime']);
-        $isText = !in_array($column->type, ['integer', 'number', 'datetime', 'enum']);
+        // enum is included: ?currency=E% matches backed string values via LIKE;
+        // ?currency=EUR falls through to = and the parser does the enum cast
+        $isText = !in_array($column->type, ['integer', 'number', 'datetime']);
+
+        // Wrap all parser calls so invalid values (e.g. unknown enum cases, bad dates)
+        // surface as 400 Bad Request rather than a 500 ValueError/Exception
+        $parse = function (string $value) use ($column): mixed {
+            try {
+                return ($column->parser)($value);
+            } catch (Throwable) {
+                throw new BadRequestHttpException("Invalid value for column `{$column->name}`");
+            }
+        };
 
         if ($isNumericOrDatetime) {
             if (str_contains($raw, '/')) {
                 [$from, $to] = explode('/', $raw, 2);
-                return ['between', [($column->parser)($from), ($column->parser)($to)]];
+                return ['between', [$parse($from), $parse($to)]];
             }
             if (str_starts_with($raw, '>=')) {
-                return ['>=', ($column->parser)(substr($raw, 2))];
+                return ['>=', $parse(substr($raw, 2))];
             }
             if (str_starts_with($raw, '<=')) {
-                return ['<=', ($column->parser)(substr($raw, 2))];
+                return ['<=', $parse(substr($raw, 2))];
             }
             if (str_starts_with($raw, '>')) {
-                return ['>', ($column->parser)(substr($raw, 1))];
+                return ['>', $parse(substr($raw, 1))];
             }
             if (str_starts_with($raw, '<')) {
-                return ['<', ($column->parser)(substr($raw, 1))];
+                return ['<', $parse(substr($raw, 1))];
             }
         }
 
@@ -98,7 +116,7 @@ readonly class ModelResourceQuery
             return ['like', $raw];
         }
 
-        return ['=', ($column->parser)($raw)];
+        return ['=', $parse($raw)];
     }
 
     /**

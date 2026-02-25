@@ -80,4 +80,19 @@ class ModelResourceListFilterTest extends ModelResourceTestCase
         $response->assertOk();
         $response->assertJson(['data' => [], 'meta' => ['total' => 0]]);
     }
+
+    #[Test]
+    public function search_does_not_apply_to_datetime_columns(): void
+    {
+        $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
+
+        // Searching for the exact created_at value must not match; datetime columns
+        // are excluded from search to avoid unreliable string comparisons in SQLite
+        $response = $this->getJson('/invoices?' . http_build_query([
+            'search' => $invoice->created_at->toDateTimeString(),
+        ]));
+
+        $response->assertOk();
+        $response->assertJson(['meta' => ['total' => 0]]);
+    }
 }
