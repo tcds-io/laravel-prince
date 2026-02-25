@@ -26,13 +26,13 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param list<string> $userPermissions
-     * @param array{list: string, get: string, create: string, update: string, delete: string} $actionPermissions
+     * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions
      * @param array<int|string, ModelResource> $resources
      */
     private function __construct(
         private string $model,
         private array $userPermissions,
-        private array $actionPermissions,
+        private array $resourcePermissions,
         private array $resources,
         private ?string $fragment,
         public bool $globalSearch = false,
@@ -43,7 +43,7 @@ readonly class ModelResource
      *
      * @param class-string<Model> $model
      * @param list<string> $userPermissions
-     * @param array{list: string, get: string, create: string, update: string, delete: string} $actionPermissions
+     * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions Maps each action to the permission string it requires
      * @param array<int|string, ModelResource|class-string<Model>> $resources
      * @param string|null $fragment Custom URL segment (defaults to the model's table name)
      * @param bool $globalSearch Whether this resource is included in global search
@@ -57,7 +57,7 @@ readonly class ModelResource
             'model:update',
             'model:delete',
         ],
-        array $actionPermissions = [
+        array $resourcePermissions = [
             'list' => 'model:list',
             'get' => 'model:get',
             'create' => 'model:create',
@@ -72,7 +72,7 @@ readonly class ModelResource
             return is_string($resource) ? self::of($resource) : $resource;
         }, $resources);
 
-        return new self($model, $userPermissions, $actionPermissions, $normalizedResources, $fragment, $globalSearch);
+        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $fragment, $globalSearch);
     }
 
     /**
@@ -119,12 +119,12 @@ readonly class ModelResource
         $nestedResourceNames = array_values(array_map(fn(ModelResource $r) => $r->routePrefix(), $this->resources));
 
         // /_schema must be registered before /{resourceId} to avoid being captured as an ID
-        self::schemaRoute($table, $schema, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->actionPermissions['list'], $this->userPermissions));
-        self::list($this->model, $table, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['list'], $this->userPermissions));
-        self::get($this->model, $schema, $constraints, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->actionPermissions['get'], $this->userPermissions));
-        self::create($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['create'], $this->userPermissions));
-        self::update($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['update'], $this->userPermissions));
-        self::delete($this->model, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['delete'], $this->userPermissions));
+        self::schemaRoute($table, $schema, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['list'], $this->userPermissions));
+        self::list($this->model, $table, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['list'], $this->userPermissions));
+        self::get($this->model, $schema, $constraints, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['get'], $this->userPermissions));
+        self::create($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['create'], $this->userPermissions));
+        self::update($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['update'], $this->userPermissions));
+        self::delete($this->model, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['delete'], $this->userPermissions));
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
             if (is_int($foreignKey)) {
@@ -136,7 +136,7 @@ readonly class ModelResource
                 'param' => $parentParam,
                 'fk' => $foreignKey,
                 'model' => $this->model,
-                'requiredPermission' => $this->actionPermissions['get'],
+                'requiredPermission' => $this->resourcePermissions['get'],
                 'userPermissions' => $this->userPermissions,
             ]];
             $nestedTable = $nestedResource->table();

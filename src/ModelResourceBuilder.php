@@ -8,7 +8,7 @@ use Closure;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Fluent builder for registering one or more ModelResource routes with shared permissions.
+ * Fluent builder for registering one or more ModelResource routes with shared user permissions.
  * Eliminates the need to repeat userPermissions on every resource and manages global search
  * entries internally — no static state, no variable capture required.
  *
@@ -28,18 +28,14 @@ final class ModelResourceBuilder
 
     /**
      * @param list<string> $userPermissions
-     * @param array{list: string, get: string, create: string, update: string, delete: string} $actionPermissions
      */
-    private function __construct(
-        private readonly array $userPermissions,
-        private readonly array $actionPermissions,
-    ) {}
+    private function __construct(private readonly array $userPermissions) {}
 
     /**
-     * Creates a new builder. All resources added via resource() inherit these permissions.
+     * Creates a new builder. The given userPermissions are inherited by all resources.
+     * Each resource sets its own resourcePermissions via resource().
      *
-     * @param list<string> $userPermissions
-     * @param array{list: string, get: string, create: string, update: string, delete: string} $actionPermissions
+     * @param list<string> $userPermissions The permissions the current user holds
      */
     public static function create(
         array $userPermissions = [
@@ -49,25 +45,19 @@ final class ModelResourceBuilder
             'model:update',
             'model:delete',
         ],
-        array $actionPermissions = [
-            'list' => 'model:list',
-            'get' => 'model:get',
-            'create' => 'model:create',
-            'update' => 'model:update',
-            'delete' => 'model:delete',
-        ],
     ): self {
-        return new self($userPermissions, $actionPermissions);
+        return new self($userPermissions);
     }
 
     /**
      * Adds a resource to the builder.
      *
      * @param class-string<Model> $model
-     * @param (Closure(self): void)|null $resources Callback to define nested resources; the nested builder inherits the same permissions
+     * @param (Closure(self): void)|null $resources Callback to define nested resources; the nested builder inherits the same userPermissions
      * @param bool $globalSearch Whether to include this resource in the global /search route
      * @param string|null $fragment Custom URL segment (defaults to the model's table name)
      * @param string|null $foreignKey FK column referencing the parent table (only meaningful when used inside a $resources callback; defaults to {singular_parent_table}_id)
+     * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions Maps each action to the permission string it requires
      */
     public function resource(
         string $model,
@@ -75,8 +65,15 @@ final class ModelResourceBuilder
         bool $globalSearch = false,
         ?string $fragment = null,
         ?string $foreignKey = null,
+        array $resourcePermissions = [
+            'list' => 'model:list',
+            'get' => 'model:get',
+            'create' => 'model:create',
+            'update' => 'model:update',
+            'delete' => 'model:delete',
+        ],
     ): self {
-        $nestedBuilder = new self($this->userPermissions, $this->actionPermissions);
+        $nestedBuilder = new self($this->userPermissions);
 
         if ($resources !== null) {
             $resources($nestedBuilder);
@@ -96,7 +93,7 @@ final class ModelResourceBuilder
         $resource = ModelResource::of(
             model: $model,
             userPermissions: $this->userPermissions,
-            actionPermissions: $this->actionPermissions,
+            resourcePermissions: $resourcePermissions,
             resources: $nestedResources,
             fragment: $fragment,
             globalSearch: $globalSearch,
