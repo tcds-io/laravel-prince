@@ -35,6 +35,7 @@ readonly class ModelResource
         private array $actionPermissions,
         private array $resources,
         private ?string $fragment,
+        public bool $globalSearch = false,
     ) {}
 
     /**
@@ -45,6 +46,7 @@ readonly class ModelResource
      * @param array{list: string, get: string, create: string, update: string, delete: string} $actionPermissions
      * @param array<int|string, ModelResource|class-string<Model>> $resources
      * @param string|null $fragment Custom URL segment (defaults to the model's table name)
+     * @param bool $globalSearch Whether this resource is included in global search
      */
     public static function of(
         string $model,
@@ -64,12 +66,13 @@ readonly class ModelResource
         ],
         array $resources = [],
         ?string $fragment = null,
+        bool $globalSearch = false,
     ): self {
         $normalizedResources = array_map(function (ModelResource|string $resource): ModelResource {
             return is_string($resource) ? self::of($resource) : $resource;
         }, $resources);
 
-        return new self($model, $userPermissions, $actionPermissions, $normalizedResources, $fragment);
+        return new self($model, $userPermissions, $actionPermissions, $normalizedResources, $fragment, $globalSearch);
     }
 
     /**
@@ -300,6 +303,22 @@ readonly class ModelResource
 
             return response(status: Response::HTTP_NO_CONTENT);
         });
+    }
+
+    /**
+     * Returns the metadata needed for global search indexing of this resource.
+     *
+     * @return array{table: string, routePrefix: string, schema: list<ColumnSchema>}
+     */
+    public function searchData(): array
+    {
+        $table = $this->table();
+
+        return [
+            'table' => $table,
+            'routePrefix' => $this->routePrefix(),
+            'schema' => self::schema($table, $this->casts()),
+        ];
     }
 
     private function table(): string
