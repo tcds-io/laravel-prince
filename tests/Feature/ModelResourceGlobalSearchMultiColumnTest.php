@@ -8,8 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
-use Tcds\Io\Prince\ModelResource;
-use Tcds\Io\Prince\ModelResourceGlobalSearch;
+use Tcds\Io\Prince\ModelResourceBuilder;
 
 /**
  * A resource with two text columns — proves that a record matching on multiple
@@ -31,9 +30,9 @@ class ModelResourceGlobalSearchMultiColumnTest extends ModelResourceTestCase
 
     protected function registerRoutes(): void
     {
-        ModelResource::of(TestProduct::class, globalSearch: true)->routes();
-
-        ModelResourceGlobalSearch::routes();
+        ModelResourceBuilder::create()
+            ->resource(model: TestProduct::class, globalSearch: true)
+            ->routes();
     }
 
     #[Test]

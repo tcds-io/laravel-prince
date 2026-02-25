@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace Test\Tcds\Io\Prince\Feature;
 
 use PHPUnit\Framework\Attributes\Test;
-use Tcds\Io\Prince\ModelResource;
-use Tcds\Io\Prince\ModelResourceGlobalSearch;
+use Tcds\Io\Prince\ModelResourceBuilder;
 
 /**
  * Invoices are opted into global search; items are not.
@@ -16,10 +15,10 @@ class ModelResourceGlobalSearchTest extends ModelResourceNestedTestCase
 {
     protected function registerRoutes(): void
     {
-        ModelResource::of(TestInvoice::class, globalSearch: true)->routes();
-        ModelResource::of(TestItem::class, globalSearch: false)->routes();
-
-        ModelResourceGlobalSearch::routes();
+        ModelResourceBuilder::create()
+            ->resource(model: TestInvoice::class, globalSearch: true)
+            ->resource(model: TestItem::class, globalSearch: false)
+            ->routes();
     }
 
     #[Test]

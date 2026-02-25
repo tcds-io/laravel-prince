@@ -87,6 +87,23 @@ readonly class ModelResource
         });
     }
 
+    /**
+     * Returns the metadata needed for global search indexing of this resource.
+     * Called by ModelResourceBuilder to collect entries before registering routes.
+     *
+     * @return array{table: string, routePrefix: string, schema: list<ColumnSchema>}
+     */
+    public function searchEntry(): array
+    {
+        $table = $this->table();
+
+        return [
+            'table' => $table,
+            'routePrefix' => $this->routePrefix(),
+            'schema' => self::schema($table, $this->casts()),
+        ];
+    }
+
     private function routePrefix(): string
     {
         return $this->fragment ?? $this->table();
@@ -100,14 +117,6 @@ readonly class ModelResource
         $schema = self::schema($table, $this->casts());
         /** @var list<string> $nestedResourceNames */
         $nestedResourceNames = array_values(array_map(fn(ModelResource $r) => $r->routePrefix(), $this->resources));
-
-        if ($this->globalSearch) {
-            ModelResourceGlobalSearch::register([
-                'table' => $table,
-                'routePrefix' => $this->routePrefix(),
-                'schema' => $schema,
-            ]);
-        }
 
         // /_schema must be registered before /{resourceId} to avoid being captured as an ID
         self::schemaRoute($table, $schema, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->actionPermissions['list'], $this->userPermissions));

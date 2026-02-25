@@ -10,38 +10,33 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
-final class ModelResourceGlobalSearch
+readonly class ModelResourceGlobalSearch
 {
-    private const string CONTAINER_KEY = 'prince.global_search';
+    /**
+     * @param list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $entries
+     */
+    private function __construct(private array $entries) {}
 
     /**
-     * Called automatically by ModelResource::routes() for resources with globalSearch: true.
-     * Accumulates search metadata in the app container for the current app lifecycle.
-     *
-     * @param array{table: string, routePrefix: string, schema: list<ColumnSchema>} $searchData
+     * @param list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $entries
      */
-    public static function register(array $searchData): void
+    public static function of(array $entries): self
     {
-        /** @var list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $existing */
-        $existing = app()->bound(self::CONTAINER_KEY) ? app(self::CONTAINER_KEY) : [];
-
-        app()->instance(self::CONTAINER_KEY, [...$existing, $searchData]);
+        return new self($entries);
     }
 
     /**
-     * Registers GET /search reading all resources that called routes() with globalSearch: true.
+     * Registers GET /search returning { data: [{ id, description, resource, link }] }.
      *
-     * Returns { data: [{ id, description, resource, link }] }.
      * Accepts ?q=value — same operator syntax as column filters:
      *   %foo%  → LIKE on text/enum columns
      *   foo    → exact match on text/enum columns
      * Numeric and datetime columns are always skipped.
      * Each record appears at most once per resource regardless of how many text columns match.
      */
-    public static function routes(): void
+    public function routes(): void
     {
-        /** @var list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $entries */
-        $entries = app()->bound(self::CONTAINER_KEY) ? app(self::CONTAINER_KEY) : [];
+        $entries = $this->entries;
 
         Route::get('/search', function (Request $request) use ($entries) {
             $q = $request->query('q');
@@ -56,7 +51,7 @@ final class ModelResourceGlobalSearch
             foreach ($entries as ['table' => $table, 'routePrefix' => $prefix, 'schema' => $schema]) {
                 $linkExpr = self::linkSql($prefix);
 
-                // Collect matchable columns for this table: [name, operator, binding_value]
+                // Collect matchable columns for this table
                 $columns = [];
 
                 foreach ($schema as $column) {
