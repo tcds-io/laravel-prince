@@ -114,13 +114,27 @@ readonly class ModelResource
     private function registerInGroup(string $table, array $constraints): void
     {
         $schema = self::schema($table, $this->casts());
-        /** @var list<string> $nestedResourceNames */
-        $nestedResourceNames = array_values(array_map(fn(ModelResource $r) => $r->routePrefix(), $this->resources));
+
+        // Collect nested resource info in one pass: used both for the GET inner lists
+        // and for registering nested route groups below.
+        // PHP allows accessing private members of other instances of the same class.
+        /** @var list<array{routePrefix: string, model: class-string<Model>, foreignKey: string}> $nestedEntries */
+        $nestedEntries = [];
+
+        foreach ($this->resources as $foreignKey => $nestedResource) {
+            $nestedEntries[] = [
+                'routePrefix' => $nestedResource->routePrefix(),
+                'model' => $nestedResource->model,
+                'foreignKey' => is_int($foreignKey) ? Str::singular($table) . '_id' : $foreignKey,
+            ];
+        }
+
+        $nestedResourceNames = array_column($nestedEntries, 'routePrefix');
 
         // /_schema must be registered before /{resourceId} to avoid being captured as an ID
         self::schemaRoute($table, $schema, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['list'], $this->userPermissions));
         self::list($this->model, $table, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['list'], $this->userPermissions));
-        self::get($this->model, $schema, $constraints, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['get'], $this->userPermissions));
+        self::get($this->model, $schema, $constraints, $nestedEntries)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['get'], $this->userPermissions));
         self::create($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['create'], $this->userPermissions));
         self::update($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['update'], $this->userPermissions));
         self::delete($this->model, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['delete'], $this->userPermissions));
@@ -197,13 +211,13 @@ readonly class ModelResource
      * @param class-string<Model> $model
      * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
-     * @param list<string> $nestedResourceNames
+     * @param list<array{routePrefix: string, model: class-string<Model>, foreignKey: string}> $nestedEntries
      */
-    private static function get(string $model, array $schema, array $constraints, array $nestedResourceNames): RouteInstance
+    private static function get(string $model, array $schema, array $constraints, array $nestedEntries): RouteInstance
     {
-        return Route::get('/{resourceId}', function (Request $request) use ($model, $schema, $constraints, $nestedResourceNames) {
+        return Route::get('/{resourceId}', function (Request $request) use ($model, $schema, $constraints, $nestedEntries) {
             $resourceId = self::routeInt($request, 'resourceId');
-            $query = $model::query();
+            $query = $model::query()->withoutEagerLoads();
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                 if (!in_array($required, $perms)) {
@@ -217,12 +231,30 @@ readonly class ModelResource
                 throw new ResourceNotFoundException($resourceId);
             }
 
+            $basePath = $request->getPathInfo();
+            $data = $record->toArray();
+
+            foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'model' => $nestedModel, 'foreignKey' => $foreignKey]) {
+                /** @var list<array<string, mixed>> $nestedItems */
+                $nestedItems = $nestedModel::query()
+                    ->withoutEagerLoads()
+                    ->where($foreignKey, $resourceId)
+                    ->get()
+                    ->toArray();
+
+                $nestedBasePath = $basePath . '/' . $routePrefix;
+                $data[$routePrefix] = array_map(
+                    fn(array $item) => [...$item, '_resource' => $nestedBasePath . '/' . (is_numeric($item['id']) ? (int) $item['id'] : 0)],
+                    $nestedItems,
+                );
+            }
+
             return response()->json([
-                'data' => $record,
+                'data' => $data,
                 'meta' => [
                     'resource' => $record->getTable(),
                     'schema' => $schema,
-                    'resources' => $nestedResourceNames,
+                    'resources' => array_column($nestedEntries, 'routePrefix'),
                 ],
             ]);
         });
