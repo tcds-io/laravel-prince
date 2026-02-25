@@ -84,6 +84,40 @@ class ModelResourceListFilterTest extends ModelResourceTestCase
     }
 
     #[Test]
+    public function search_with_like_applies_to_text_columns(): void
+    {
+        $invoiceA = TestInvoice::create(['title' => 'Invoice Alpha', 'amount' => 100.00]);
+        $invoiceB = TestInvoice::create(['title' => 'Invoice Beta', 'amount' => 200.00]);
+        TestInvoice::create(['title' => 'Receipt Gamma', 'amount' => 300.00]);
+
+        $response = $this->getJson('/invoices?' . http_build_query(['search' => 'Invoice%']));
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+        $response->assertJson(['data' => [['id' => $invoiceA->id], ['id' => $invoiceB->id]]]);
+    }
+
+    #[Test]
+    public function search_like_is_ignored_for_numeric_columns(): void
+    {
+        TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
+
+        // %foo% skips numeric columns silently; the text columns won't match either, so total=0
+        $response = $this->getJson('/invoices?' . http_build_query(['search' => '%999%']));
+
+        $response->assertOk();
+        $response->assertJson(['meta' => ['total' => 0]]);
+    }
+
+    #[Test]
+    public function prop_filter_returns_400_for_like_on_numeric_column(): void
+    {
+        $response = $this->getJson('/invoices?' . http_build_query(['amount' => '%100%']));
+
+        $response->assertStatus(400);
+    }
+
+    #[Test]
     public function search_does_not_apply_to_datetime_columns(): void
     {
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);

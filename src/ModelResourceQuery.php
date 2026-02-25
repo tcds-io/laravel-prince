@@ -32,15 +32,27 @@ readonly class ModelResourceQuery
             $query->where($fk, $parentId);
         }
 
-        // ?search=foo — equal match across non-datetime columns (OR); datetime excluded to avoid
-        // unreliable string comparisons against stored timestamp values
-        if ($search = $request->query('search')) {
+        // ?search=value — filter across non-datetime columns (OR) using the same operator
+        // inference as per-column filters: %foo% → LIKE, >100 → >, etc.
+        // Datetime columns are always excluded; columns that can't parse the value are skipped.
+        $search = $request->query('search');
+        if (is_string($search) && $search !== '') {
             $query->where(function ($q) use ($schema, $search) {
                 foreach ($schema as $column) {
                     if ($column->type === 'datetime') {
                         continue;
                     }
-                    $q->orWhere($column->name, $search);
+                    try {
+                        [$operator, $value] = self::parseFilter($column, $search);
+                    } catch (BadRequestHttpException) {
+                        continue;
+                    }
+                    if ($operator === 'between') {
+                        /** @var array<int, mixed> $value */
+                        $q->orWhereBetween($column->name, $value);
+                    } else {
+                        $q->orWhere($column->name, $operator, $value);
+                    }
                 }
             });
         }
@@ -99,6 +111,9 @@ readonly class ModelResourceQuery
         };
 
         if ($isNumericOrDatetime) {
+            if (str_contains($raw, '%')) {
+                throw new BadRequestHttpException("Column `{$column->name}` does not support LIKE operators");
+            }
             if (str_contains($raw, '/')) {
                 [$from, $to] = explode('/', $raw, 2);
 
