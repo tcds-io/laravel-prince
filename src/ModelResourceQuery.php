@@ -36,15 +36,69 @@ readonly class ModelResourceQuery
             });
         }
 
-        // ?prop=foo — exact equal match on a specific column, value is parsed via the column's type
+        // ?prop=value — filter on a specific column; operator is inferred from the value prefix/content
         foreach ($schema as $column) {
-            $value = $request->query($column->name);
-            if ($value !== null && $value !== '') {
-                $query->where($column->name, ($column->parser)($value));
+            $raw = $request->query($column->name);
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+            [$operator, $value] = self::parseFilter($column, $raw);
+            if ($operator === 'between') {
+                $query->whereBetween($column->name, $value);
+            } else {
+                $query->where($column->name, $operator, $value);
             }
         }
 
         return $query->paginate(10)->toArray();
+    }
+
+    /**
+     * Parses a raw query-string value into an [operator, value] pair.
+     *
+     * Numeric/datetime columns support:
+     *   >100   → ['>', 100]       (greater than)
+     *   <100   → ['<', 100]       (less than)
+     *   >=100  → ['>=', 100]      (greater than or equal)
+     *   <=100  → ['<=', 100]      (less than or equal)
+     *   10/20  → ['between', [10, 20]]
+     *
+     * Text columns support:
+     *   %foo%  → ['like', '%foo%']  (any value containing %)
+     *
+     * Everything else falls back to ['=', parsedValue].
+     *
+     * @return array{0: string, 1: mixed}
+     */
+    private static function parseFilter(ColumnSchema $column, string $raw): array
+    {
+        $isNumericOrDatetime = in_array($column->type, ['integer', 'number', 'datetime']);
+        $isText = !in_array($column->type, ['integer', 'number', 'datetime', 'enum']);
+
+        if ($isNumericOrDatetime) {
+            if (str_contains($raw, '/')) {
+                [$from, $to] = explode('/', $raw, 2);
+                return ['between', [($column->parser)($from), ($column->parser)($to)]];
+            }
+            if (str_starts_with($raw, '>=')) {
+                return ['>=', ($column->parser)(substr($raw, 2))];
+            }
+            if (str_starts_with($raw, '<=')) {
+                return ['<=', ($column->parser)(substr($raw, 2))];
+            }
+            if (str_starts_with($raw, '>')) {
+                return ['>', ($column->parser)(substr($raw, 1))];
+            }
+            if (str_starts_with($raw, '<')) {
+                return ['<', ($column->parser)(substr($raw, 1))];
+            }
+        }
+
+        if ($isText && str_contains($raw, '%')) {
+            return ['like', $raw];
+        }
+
+        return ['=', ($column->parser)($raw)];
     }
 
     /**
