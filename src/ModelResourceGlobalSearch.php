@@ -38,7 +38,11 @@ readonly class ModelResourceGlobalSearch
     {
         $entries = $this->entries;
 
-        Route::get('/search', function (Request $request) use ($entries) {
+        // Capture the outer Route::prefix() group at registration time so links
+        // include any base path (e.g. "/api/backoffice/invoices/1" instead of "/invoices/1").
+        $groupPrefix = trim(Route::getLastGroupPrefix(), '/');
+
+        Route::get('/search', function (Request $request) use ($entries, $groupPrefix) {
             $q = $request->query('q');
 
             if (!is_string($q) || $q === '') {
@@ -49,7 +53,8 @@ readonly class ModelResourceGlobalSearch
             $bindings = [];
 
             foreach ($entries as ['table' => $table, 'routePrefix' => $prefix, 'schema' => $schema]) {
-                $linkExpr = self::linkSql($prefix);
+                $fullPrefix = $groupPrefix !== '' ? "{$groupPrefix}/{$prefix}" : $prefix;
+                $linkExpr = self::linkSql($fullPrefix);
 
                 // Collect matchable columns for this table
                 $columns = [];
