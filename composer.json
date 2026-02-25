@@ -1,5 +1,5 @@
 {
-  "name": "tcds-io/laravel-model-api",
+  "name": "tcds-io/laravel-prince",
   "description": "A Simple way to create rest API resources for your Laravel models.",
   "type": "library",
   "license": "MIT",
@@ -27,14 +27,16 @@
     }
   },
   "scripts": {
-    "cs:check": "vendor/bin/php-cs-fixer check -v ./",
-    "cs:fix": "vendor/bin/php-cs-fixer fix ./",
-    "test:stan": "vendor/bin/phpstan analyse src --level=max --ansi",
-    "test:unit": "vendor/bin/phpunit --testdox --color=always",
+    "cs:fix": "vendor/bin/php-cs-fixer fix",
+    "test:cs": "vendor/bin/php-cs-fixer check -v",
+    "test:stan": "vendor/bin/phpstan analyse src --level=max --memory-limit=512M --ansi",
+    "test:unit": "php -d auto_prepend_file=tests/prepend.php vendor/bin/phpunit --testsuite Unit --testdox --color=always",
+    "test:feature": "php -d auto_prepend_file=tests/prepend.php vendor/bin/phpunit --testsuite Feature --testdox --color=always",
     "tests": [
-      "@cs:check",
+      "@test:cs",
       "@test:stan",
-      "@test:unit"
+      "@test:unit",
+      "@test:feature"
     ]
   },
   "config": {

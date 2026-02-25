@@ -28,10 +28,13 @@ jobs:
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Code style
-        run: composer cs:check
+        run: composer test:cs
 
       - name: Static analysis
         run: composer test:stan
 
-      - name: Unit & feature tests
+      - name: Unit tests
         run: composer test:unit
+
+      - name: Feature tests
+        run: composer test:feature

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tcds\Io\Prince;
 
 use Closure;
@@ -14,9 +16,11 @@ readonly class ColumnSchema implements JsonSerializable
         public string $type,
         public Closure $parser,
         public mixed $values = null,
-    ) {
-    }
+    ) {}
 
+    /**
+     * @return array<string, mixed>
+     */
     #[Override]
     public function jsonSerialize(): array
     {

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Test\Tcds\Io\Prince\Feature;
 
 use Illuminate\Database\Eloquent\Model;
@@ -31,20 +33,23 @@ abstract class ModelResourceTestCase extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->createTables();
+        $this->registerRoutes();
+    }
 
+    protected function createTables(): void
+    {
         Schema::create('invoices', function (Blueprint $table) {
             $table->id();
             $table->string('title');
             $table->decimal('amount', 8, 2);
             $table->timestamps();
         });
-
-        $this->registerRoutes();
     }
 
     protected function registerRoutes(): void
     {
-        ModelResource::of(TestInvoice::class);
+        ModelResource::of(TestInvoice::class)->routes();
     }
 }
 

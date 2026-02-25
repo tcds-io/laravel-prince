@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Test\Tcds\Io\Prince\Unit;
 
 use Illuminate\Http\Request;
@@ -54,6 +56,7 @@ class ResourceMiddlewareTest extends TestCase
 
         $middleware->handle($request, function (Request $req) use (&$capturedRequest) {
             $capturedRequest = $req;
+
             return new Response();
         });
 
