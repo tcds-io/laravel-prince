@@ -10,44 +10,37 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
-readonly class ModelResourceGlobalSearch
+final class ModelResourceGlobalSearch
 {
-    /**
-     * @param list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $entries
-     */
-    private function __construct(private array $entries) {}
+    private const string CONTAINER_KEY = 'prince.global_search';
 
     /**
-     * Builds a ModelResourceGlobalSearch from a list of resources. Only resources with
-     * globalSearch = true are included. Call ->routes() on the result to register the search route.
+     * Called automatically by ModelResource::routes() for resources with globalSearch: true.
+     * Accumulates search metadata in the app container for the current app lifecycle.
      *
-     * @param list<ModelResource> $resources
+     * @param array{table: string, routePrefix: string, schema: list<ColumnSchema>} $searchData
      */
-    public static function of(array $resources): self
+    public static function register(array $searchData): void
     {
-        $entries = [];
+        /** @var list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $existing */
+        $existing = app()->bound(self::CONTAINER_KEY) ? app(self::CONTAINER_KEY) : [];
 
-        foreach ($resources as $resource) {
-            if ($resource->globalSearch) {
-                $entries[] = $resource->searchData();
-            }
-        }
-
-        return new self($entries);
+        app()->instance(self::CONTAINER_KEY, [...$existing, $searchData]);
     }
 
     /**
-     * Registers GET /search returning { data: [{ id, description, resource, link }] }.
+     * Registers GET /search reading all resources that called routes() with globalSearch: true.
      *
-     * Accepts ?q=value where value follows the same operator syntax as column filters:
-     *   %foo%  → LIKE on all text/enum columns
-     *   foo    → exact match on all text/enum columns
+     * Returns { data: [{ id, description, resource, link }] }.
+     * Accepts ?q=value — same operator syntax as column filters:
+     *   %foo%  → LIKE on text/enum columns
+     *   foo    → exact match on text/enum columns
      * Numeric and datetime columns are always skipped.
-     * Columns where the value cannot be parsed (e.g. invalid enum cases) are silently skipped.
      */
-    public function routes(): void
+    public static function routes(): void
     {
-        $entries = $this->entries;
+        /** @var list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $entries */
+        $entries = app()->bound(self::CONTAINER_KEY) ? app(self::CONTAINER_KEY) : [];
 
         Route::get('/search', function (Request $request) use ($entries) {
             $q = $request->query('q');

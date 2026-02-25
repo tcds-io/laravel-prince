@@ -16,12 +16,10 @@ class ModelResourceGlobalSearchTest extends ModelResourceNestedTestCase
 {
     protected function registerRoutes(): void
     {
-        $invoices = ModelResource::of(TestInvoice::class, globalSearch: true);
-        $items = ModelResource::of(TestItem::class, globalSearch: false);
+        ModelResource::of(TestInvoice::class, globalSearch: true)->routes();
+        ModelResource::of(TestItem::class, globalSearch: false)->routes();
 
-        $invoices->routes();
-
-        ModelResourceGlobalSearch::of([$invoices, $items])->routes();
+        ModelResourceGlobalSearch::routes();
     }
 
     #[Test]
@@ -62,7 +60,6 @@ class ModelResourceGlobalSearchTest extends ModelResourceNestedTestCase
     #[Test]
     public function search_excludes_resources_with_global_search_disabled(): void
     {
-        TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
         TestItem::create(['invoice_id' => $invoice->id, 'description' => 'Unique Item Description', 'price' => 10.00]);
 
