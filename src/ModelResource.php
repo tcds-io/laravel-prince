@@ -95,9 +95,13 @@ readonly class ModelResource
     private function registerInGroup(string $table, array $constraints): void
     {
         $schema = self::schema($table, $this->casts());
+        /** @var list<string> $nestedResourceNames */
+        $nestedResourceNames = array_values(array_map(fn(ModelResource $r) => $r->routePrefix(), $this->resources));
 
+        // /_schema must be registered before /{resourceId} to avoid being captured as an ID
+        self::schemaRoute($table, $schema, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->actionPermissions['list'], $this->userPermissions));
         self::list($this->model, $table, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['list'], $this->userPermissions));
-        self::get($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['get'], $this->userPermissions));
+        self::get($this->model, $schema, $constraints, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->actionPermissions['get'], $this->userPermissions));
         self::create($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['create'], $this->userPermissions));
         self::update($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['update'], $this->userPermissions));
         self::delete($this->model, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['delete'], $this->userPermissions));
@@ -150,13 +154,29 @@ readonly class ModelResource
     }
 
     /**
+     * @param list<ColumnSchema> $schema
+     * @param list<string> $nestedResourceNames
+     */
+    private static function schemaRoute(string $table, array $schema, array $nestedResourceNames): RouteInstance
+    {
+        return Route::get('/_schema', function () use ($table, $schema, $nestedResourceNames) {
+            return response()->json([
+                'resource' => $table,
+                'resources' => $nestedResourceNames,
+                'schema' => $schema,
+            ]);
+        });
+    }
+
+    /**
      * @param class-string<Model> $model
      * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param list<string> $nestedResourceNames
      */
-    private static function get(string $model, array $schema, array $constraints): RouteInstance
+    private static function get(string $model, array $schema, array $constraints, array $nestedResourceNames): RouteInstance
     {
-        return Route::get('/{resourceId}', function (Request $request) use ($model, $schema, $constraints) {
+        return Route::get('/{resourceId}', function (Request $request) use ($model, $schema, $constraints, $nestedResourceNames) {
             $resourceId = self::routeInt($request, 'resourceId');
             $query = $model::query();
 
@@ -177,6 +197,7 @@ readonly class ModelResource
                 'meta' => [
                     'resource' => $record->getTable(),
                     'schema' => $schema,
+                    'resources' => $nestedResourceNames,
                 ],
             ]);
         });
