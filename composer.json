@@ -30,12 +30,13 @@
     "cs:fix": "vendor/bin/php-cs-fixer fix ./",
     "test:cs": "vendor/bin/php-cs-fixer check -v ./",
     "test:stan": "vendor/bin/phpstan analyse src --level=max --ansi",
-    "test:unit": "php -d auto_prepend_file=tests/prepend.php vendor/bin/phpunit --testdox --color=always",
-    "test:feature": "php -d auto_prepend_file=tests/prepend.php vendor/bin/phpunit --testdox --color=always",
+    "test:unit": "php -d auto_prepend_file=tests/prepend.php vendor/bin/phpunit --testsuite Unit --testdox --color=always",
+    "test:feature": "php -d auto_prepend_file=tests/prepend.php vendor/bin/phpunit --testsuite Feature --testdox --color=always",
     "tests": [
-      "@cs:check",
+      "@test:cs",
       "@test:stan",
-      "@test:unit"
+      "@test:unit",
+      "@test:feature"
     ]
   },
   "config": {
