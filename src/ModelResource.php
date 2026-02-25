@@ -1,10 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tcds\Io\Prince;
 
 use BackedEnum;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -32,8 +35,7 @@ readonly class ModelResource
         private array $actionPermissions,
         private array $resources,
         private ?string $fragment,
-    ) {
-    }
+    ) {}
 
     /**
      * Builds a ModelResource definition. Call ->routes() on the result to register routes.
@@ -62,12 +64,12 @@ readonly class ModelResource
         ],
         array $resources = [],
         ?string $fragment = null,
-    ): static {
-        $normalizedResources = array_map(function ($resource) {
-            return is_string($resource) ? static::of($resource) : $resource;
+    ): self {
+        $normalizedResources = array_map(function (ModelResource|string $resource): ModelResource {
+            return is_string($resource) ? self::of($resource) : $resource;
         }, $resources);
 
-        return new static($model, $userPermissions, $actionPermissions, $normalizedResources, $fragment);
+        return new self($model, $userPermissions, $actionPermissions, $normalizedResources, $fragment);
     }
 
     /**
@@ -94,11 +96,11 @@ readonly class ModelResource
     {
         $schema = self::schema($table, $this->casts());
 
-        self::list($this->model, $table, $schema, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['list'], $this->userPermissions));
-        self::get($this->model, $schema, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['get'], $this->userPermissions));
-        self::create($this->model, $schema, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['create'], $this->userPermissions));
-        self::update($this->model, $schema, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['update'], $this->userPermissions));
-        self::delete($this->model, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['delete'], $this->userPermissions));
+        self::list($this->model, $table, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['list'], $this->userPermissions));
+        self::get($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['get'], $this->userPermissions));
+        self::create($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['create'], $this->userPermissions));
+        self::update($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['update'], $this->userPermissions));
+        self::delete($this->model, $constraints)->middleware((string) ResourceMiddleware::of($this->actionPermissions['delete'], $this->userPermissions));
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
             if (is_int($foreignKey)) {
@@ -123,7 +125,7 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param array<string, ColumnSchema> $schema
+     * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
      */
     private static function list(string $model, string $table, array $schema, array $constraints): RouteInstance
@@ -149,23 +151,26 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param array<string, ColumnSchema> $schema
+     * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
      */
     private static function get(string $model, array $schema, array $constraints): RouteInstance
     {
         return Route::get('/{resourceId}', function (Request $request) use ($model, $schema, $constraints) {
-            $resourceId = (int) $request->route('resourceId');
+            $resourceId = self::routeInt($request, 'resourceId');
             $query = $model::query();
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                 if (!in_array($required, $perms)) {
                     throw new AccessDeniedHttpException();
                 }
-                $query->where($fk, (int) $request->route($param));
+                $query->where($fk, self::routeInt($request, $param));
             }
 
-            $record = $query->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
+            $record = $query->find($resourceId);
+            if ($record === null) {
+                throw new ResourceNotFoundException($resourceId);
+            }
 
             return response()->json([
                 'data' => $record,
@@ -179,7 +184,7 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param array<string, ColumnSchema> $schema
+     * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
      */
     private static function create(string $model, array $schema, array $constraints): RouteInstance
@@ -191,7 +196,7 @@ readonly class ModelResource
                 if (!in_array($required, $perms)) {
                     throw new AccessDeniedHttpException();
                 }
-                $parentId = (int) $request->route($param);
+                $parentId = self::routeInt($request, $param);
                 ModelResourceQuery::findOrThrow($parentModel, $parentId);
                 $data[$fk] = $parentId;
             }
@@ -200,8 +205,10 @@ readonly class ModelResource
                 /** @var object{ id: int } $record */
                 $record = $model::query()->create($data);
             } catch (QueryException $exception) {
-                [, , $error] = $exception->errorInfo;
-                throw new BadRequestHttpException($error ?? "Failed to create resource");
+                $errorInfo = $exception->errorInfo;
+                $error = is_array($errorInfo) ? ($errorInfo[2] ?? null) : null;
+
+                throw new BadRequestHttpException(is_string($error) ? $error : 'Failed to create resource');
             }
 
             return response()->json([
@@ -212,13 +219,13 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param array<string, ColumnSchema> $schema
+     * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
      */
     private static function update(string $model, array $schema, array $constraints): RouteInstance
     {
         return Route::patch('/{resourceId}', function (Request $request) use ($model, $schema, $constraints) {
-            $resourceId = (int) $request->route('resourceId');
+            $resourceId = self::routeInt($request, 'resourceId');
             $query = $model::query();
             $foreignKeys = [];
 
@@ -226,11 +233,14 @@ readonly class ModelResource
                 if (!in_array($required, $perms)) {
                     throw new AccessDeniedHttpException();
                 }
-                $query->where($fk, (int) $request->route($param));
+                $query->where($fk, self::routeInt($request, $param));
                 $foreignKeys[] = $fk;
             }
 
-            $record = $query->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
+            $record = $query->find($resourceId);
+            if ($record === null) {
+                throw new ResourceNotFoundException($resourceId);
+            }
 
             $data = array_filter(self::data($schema, $request));
 
@@ -251,17 +261,20 @@ readonly class ModelResource
     private static function delete(string $model, array $constraints): RouteInstance
     {
         return Route::delete('/{resourceId}', function (Request $request) use ($model, $constraints) {
-            $resourceId = (int) $request->route('resourceId');
+            $resourceId = self::routeInt($request, 'resourceId');
             $query = $model::query();
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                 if (!in_array($required, $perms)) {
                     throw new AccessDeniedHttpException();
                 }
-                $query->where($fk, (int) $request->route($param));
+                $query->where($fk, self::routeInt($request, $param));
             }
 
-            $record = $query->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
+            $record = $query->find($resourceId);
+            if ($record === null) {
+                throw new ResourceNotFoundException($resourceId);
+            }
             $record->delete();
 
             return response(status: Response::HTTP_NO_CONTENT);
@@ -270,7 +283,9 @@ readonly class ModelResource
 
     private function table(): string
     {
-        return (new ReflectionClass($this->model))->getProperty('table')->getDefaultValue();
+        $value = (new ReflectionClass($this->model))->getProperty('table')->getDefaultValue();
+
+        return is_string($value) ? $value : '';
     }
 
     /**
@@ -278,89 +293,113 @@ readonly class ModelResource
      */
     private function casts(): array
     {
-        return (new ReflectionClass($this->model))->getProperty('casts')->getDefaultValue();
+        $value = (new ReflectionClass($this->model))->getProperty('casts')->getDefaultValue();
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        /** @var array<string, mixed> $value */
+        return $value;
     }
 
     /**
-     * @param array<string, ColumnSchema> $schema
+     * @param list<ColumnSchema> $schema
      * @return array<string, mixed>
      */
     private static function data(array $schema, Request $request): array
     {
-        return collect($schema)
-            ->mapWithKeys(function (ColumnSchema $column) use ($request) {
-                try {
-                    return [$column->name => $column->valueOf($request)];
-                } catch (Throwable) {
-                    throw new BadRequestHttpException("Value of `$column->name` is invalid");
-                }
-            })
-            ->toArray();
+        $result = [];
+
+        foreach ($schema as $column) {
+            try {
+                $result[$column->name] = $column->valueOf($request);
+            } catch (Throwable) {
+                throw new BadRequestHttpException("Value of `$column->name` is invalid");
+            }
+        }
+
+        return $result;
     }
 
     /**
-     * @return array<string, ColumnSchema>
+     * @param array<string, mixed> $casts
+     * @return list<ColumnSchema>
      */
     private static function schema(string $table, array $casts): array
     {
-        return collect(Schema::getColumns($table))
-            ->map(function ($item) use ($casts) {
-                $name = $item['name'];
-                $type = $casts[$name] ?? $item['type_name'];
-                $column = self::columnSchemaOf($type);
+        $result = [];
 
-                return new ColumnSchema(
-                    name: $name,
-                    type: $column['type'],
-                    parser: $column['parser'],
-                    values: $column['values'] ?? null,
-                );
-            })
-            ->toArray();
+        foreach (Schema::getColumns($table) as $item) {
+            /** @var array{name: string, type_name: string} $item */
+            $name = $item['name'];
+            $castType = $casts[$name] ?? null;
+            $type = is_string($castType) ? $castType : $item['type_name'];
+            $column = self::columnSchemaOf($type);
+
+            $result[] = new ColumnSchema(
+                name: $name,
+                type: $column['type'],
+                parser: $column['parser'],
+                values: $column['values'] ?? null,
+            );
+        }
+
+        return $result;
     }
 
     /**
-     * @return array{ type: string, parser: Closure, values?: list<string> }
+     * @return array{type: string, parser: Closure, values?: list<string>}
      */
     private static function columnSchemaOf(string $type): array
     {
         return match (true) {
-            enum_exists($type) => [
+            enum_exists($type) && is_a($type, BackedEnum::class, true) => [
                 'type' => 'enum',
                 ...self::enumColumnSchemaOf($type),
             ],
             in_array($type, ['bigint', 'integer']) => [
                 'type' => 'integer',
-                'parser' => fn($value) => (int) $value,
+                'parser' => fn(string $value) => (int) $value,
             ],
             $type === 'datetime' => [
                 'type' => 'datetime',
-                'parser' => fn($value) => new Carbon($value),
+                'parser' => fn(string $value) => new Carbon($value),
             ],
             $type === 'immutable_datetime' => [
                 'type' => 'datetime',
-                'parser' => fn($value) => new CarbonImmutable($value),
+                'parser' => fn(string $value) => new CarbonImmutable($value),
             ],
             in_array($type, ['decimal', 'float']) => [
                 'type' => 'number',
-                'parser' => fn($value) => (float) $value,
+                'parser' => fn(string $value) => (float) $value,
             ],
             default => [
                 'type' => $type,
-                'parser' => fn($value) => $value,
+                'parser' => fn(mixed $value): mixed => $value,
             ],
         };
     }
 
     /**
      * @param class-string<BackedEnum> $type
-     * @return array
+     * @return array{parser: Closure, values: list<string>}
      */
     private static function enumColumnSchemaOf(string $type): array
     {
         return [
-            'parser' => fn($value) => $type::from($value),
-            'values' => array_map(fn(BackedEnum $v) => $v->value, $type::cases()),
+            'parser' => fn(int|string $value) => $type::from($value),
+            'values' => array_map(fn(BackedEnum $v) => (string) $v->value, $type::cases()),
         ];
+    }
+
+    /**
+     * Safely extracts an integer route parameter, returning 0 if absent or non-string.
+     */
+    private static function routeInt(Request $request, string $param): int
+    {
+        $value = $request->route($param);
+
+        return is_string($value) ? (int) $value : 0;
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tcds\Io\Prince;
 
 use Illuminate\Database\Eloquent\Model;
@@ -13,10 +15,11 @@ readonly class ModelResourceQuery
     /**
      * @template T of Model
      * @param class-string<T> $model
-     * @param array<string, ColumnSchema> $schema
-     * @return mixed
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param list<ColumnSchema> $schema
+     * @return array<string, mixed>
      */
-    public static function paginate(string $model, array $constraints, array $schema, Request $request)
+    public static function paginate(string $model, array $constraints, array $schema, Request $request): array
     {
         $query = $model::query()->withoutEagerLoads();
 
@@ -24,7 +27,7 @@ readonly class ModelResourceQuery
             if (!in_array($required, $perms)) {
                 throw new AccessDeniedHttpException();
             }
-            $parentId = (int) $request->route($param);
+            $parentId = self::routeInt($request, $param);
             self::findOrThrow($parentModel, $parentId);
             $query->where($fk, $parentId);
         }
@@ -45,17 +48,19 @@ readonly class ModelResourceQuery
         // ?prop=value — filter on a specific column; operator is inferred from the value prefix/content
         foreach ($schema as $column) {
             $raw = $request->query($column->name);
-            if ($raw === null || $raw === '') {
+            if (!is_string($raw) || $raw === '') {
                 continue;
             }
             [$operator, $value] = self::parseFilter($column, $raw);
             if ($operator === 'between') {
+                /** @var array<int, mixed> $value */
                 $query->whereBetween($column->name, $value);
             } else {
                 $query->where($column->name, $operator, $value);
             }
         }
 
+        /** @var array<string, mixed> */
         return $query->paginate(10)->toArray();
     }
 
@@ -96,6 +101,7 @@ readonly class ModelResourceQuery
         if ($isNumericOrDatetime) {
             if (str_contains($raw, '/')) {
                 [$from, $to] = explode('/', $raw, 2);
+
                 return ['between', [$parse($from), $parse($to)]];
             }
             if (str_starts_with($raw, '>=')) {
@@ -127,5 +133,15 @@ readonly class ModelResourceQuery
     public static function findOrThrow(string $model, int $resourceId): Model
     {
         return $model::query()->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
+    }
+
+    /**
+     * Safely extracts an integer route parameter, returning 0 if absent or non-string.
+     */
+    private static function routeInt(Request $request, string $param): int
+    {
+        $value = $request->route($param);
+
+        return is_string($value) ? (int) $value : 0;
     }
 }

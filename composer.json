@@ -27,9 +27,9 @@
     }
   },
   "scripts": {
-    "cs:fix": "vendor/bin/php-cs-fixer fix ./",
-    "test:cs": "vendor/bin/php-cs-fixer check -v ./",
-    "test:stan": "vendor/bin/phpstan analyse src --level=max --ansi",
+    "cs:fix": "vendor/bin/php-cs-fixer fix",
+    "test:cs": "vendor/bin/php-cs-fixer check -v",
+    "test:stan": "vendor/bin/phpstan analyse src --level=max --memory-limit=512M --ansi",
     "test:unit": "php -d auto_prepend_file=tests/prepend.php vendor/bin/phpunit --testsuite Unit --testdox --color=always",
     "test:feature": "php -d auto_prepend_file=tests/prepend.php vendor/bin/phpunit --testsuite Feature --testdox --color=always",
     "tests": [

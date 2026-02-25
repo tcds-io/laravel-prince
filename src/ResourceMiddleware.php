@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tcds\Io\Prince;
 
 use Closure;
@@ -12,9 +14,7 @@ readonly class ResourceMiddleware
     /**
      * @param list<string> $userPermissions
      */
-    private function __construct(private string $action, private array $userPermissions)
-    {
-    }
+    private function __construct(private string $action, private array $userPermissions) {}
 
     /**
      * @param list<string> $userPermissions
