@@ -29,10 +29,33 @@ class ModelResourceListTest extends ModelResourceTestCase
                 'per_page' => 10,
                 'total' => 2,
                 'last_page' => 1,
-                'from' => 1,
-                'to' => 2,
             ],
         ]);
+    }
+
+    #[Test]
+    public function list_respects_custom_limit(): void
+    {
+        TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
+        TestInvoice::create(['title' => 'Invoice B', 'amount' => 200.00]);
+        TestInvoice::create(['title' => 'Invoice C', 'amount' => 300.00]);
+
+        $response = $this->getJson('/invoices?limit=2');
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+        $response->assertJsonPath('meta.per_page', 2);
+        $response->assertJsonPath('meta.total', 3);
+        $response->assertJsonPath('meta.last_page', 2);
+    }
+
+    #[Test]
+    public function list_caps_limit_at_100(): void
+    {
+        $response = $this->getJson('/invoices?limit=200');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.per_page', 100);
     }
 
     #[Test]
@@ -50,8 +73,6 @@ class ModelResourceListTest extends ModelResourceTestCase
                 'per_page' => 10,
                 'total' => 0,
                 'last_page' => 1,
-                'from' => null,
-                'to' => null,
             ],
         ]);
     }

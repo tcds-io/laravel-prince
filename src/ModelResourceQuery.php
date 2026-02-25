@@ -72,8 +72,11 @@ readonly class ModelResourceQuery
             }
         }
 
+        $limitParam = $request->input('limit');
+        $limit = min(is_numeric($limitParam) ? (int) $limitParam : 10, 100);
+
         /** @var array<string, mixed> */
-        return $query->paginate(10)->toArray();
+        return $query->paginate(perPage: $limit)->toArray();
     }
 
     /**
