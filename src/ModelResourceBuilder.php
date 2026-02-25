@@ -27,26 +27,26 @@ final class ModelResourceBuilder
     private array $searchEntries = [];
 
     /**
-     * @param list<string> $userPermissions
+     * @param Closure(): list<string> $userPermissions
      */
-    private function __construct(private readonly array $userPermissions) {}
+    private function __construct(private readonly Closure $userPermissions) {}
 
     /**
      * Creates a new builder. The given userPermissions are inherited by all resources.
      * Each resource sets its own resourcePermissions via resource().
      *
-     * @param list<string> $userPermissions The permissions the current user holds
+     * @param (Closure(): list<string>)|null $userPermissions The permissions the current user holds
      */
     public static function create(
-        array $userPermissions = [
+        ?Closure $userPermissions = null,
+    ): self {
+        return new self($userPermissions ?? fn() => [
             'default-model:list',
             'default-model:get',
             'default-model:create',
             'default-model:update',
             'default-model:delete',
-        ],
-    ): self {
-        return new self($userPermissions);
+        ]);
     }
 
     /**

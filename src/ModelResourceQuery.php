@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tcds\Io\Prince;
 
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -15,7 +16,7 @@ readonly class ModelResourceQuery
     /**
      * @template T of Model
      * @param class-string<T> $model
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
      * @param list<ColumnSchema> $schema
      * @return array<string, mixed>
      */
@@ -24,7 +25,7 @@ readonly class ModelResourceQuery
         $query = $model::query()->withoutEagerLoads();
 
         foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-            if (!in_array($required, $perms)) {
+            if (!in_array($required, ($perms)())) {
                 throw new AccessDeniedHttpException();
             }
             $parentId = self::routeInt($request, $param);

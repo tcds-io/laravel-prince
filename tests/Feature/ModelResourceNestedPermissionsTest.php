@@ -18,7 +18,7 @@ class ModelResourceNestedPermissionsTest extends ModelResourceNestedTestCase
     {
         ModelResource::of(
             TestInvoice::class,
-            userPermissions: ['model:list', 'model:create', 'model:update', 'model:delete'],
+            userPermissions: fn() => ['model:list', 'model:create', 'model:update', 'model:delete'],
             resources: [ModelResource::of(TestItem::class)],
         )->routes();
     }
@@ -81,7 +81,7 @@ class ModelResourceNestedPermissionsTest extends ModelResourceNestedTestCase
     {
         ModelResource::of(
             TestInvoice::class,
-            userPermissions: ['model:get', 'model:list', 'model:create', 'model:update', 'model:delete'],
+            userPermissions: fn() => ['model:get', 'model:list', 'model:create', 'model:update', 'model:delete'],
             resources: [ModelResource::of(TestItem::class)],
         )->routes();
 

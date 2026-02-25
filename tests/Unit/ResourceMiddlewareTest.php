@@ -16,7 +16,7 @@ class ResourceMiddlewareTest extends TestCase
     #[Test]
     public function handle_calls_next_when_action_is_in_user_permissions(): void
     {
-        $middleware = ResourceMiddleware::of('model:create', ['model:list', 'model:create', 'model:delete']);
+        $middleware = ResourceMiddleware::of('model:create', fn() => ['model:list', 'model:create', 'model:delete']);
         $request = Request::create('/', 'POST');
         $response = new Response('ok', 200);
 
@@ -28,7 +28,7 @@ class ResourceMiddlewareTest extends TestCase
     #[Test]
     public function handle_throws_when_action_is_not_in_user_permissions(): void
     {
-        $middleware = ResourceMiddleware::of('model:delete', ['model:list', 'model:get']);
+        $middleware = ResourceMiddleware::of('model:delete', fn() => ['model:list', 'model:get']);
         $request = Request::create('/', 'DELETE');
 
         $this->expectException(AccessDeniedHttpException::class);
@@ -39,7 +39,7 @@ class ResourceMiddlewareTest extends TestCase
     #[Test]
     public function handle_throws_when_user_has_no_permissions_at_all(): void
     {
-        $middleware = ResourceMiddleware::of('model:list', []);
+        $middleware = ResourceMiddleware::of('model:list', fn() => []);
         $request = Request::create('/', 'GET');
 
         $this->expectException(AccessDeniedHttpException::class);
@@ -50,7 +50,7 @@ class ResourceMiddlewareTest extends TestCase
     #[Test]
     public function handle_passes_the_original_request_to_next(): void
     {
-        $middleware = ResourceMiddleware::of('model:get', ['model:get']);
+        $middleware = ResourceMiddleware::of('model:get', fn() => ['model:get']);
         $request = Request::create('/', 'GET');
         $capturedRequest = null;
 

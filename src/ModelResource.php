@@ -24,13 +24,13 @@ readonly class ModelResource
 {
     /**
      * @param class-string<Model> $model
-     * @param list<string> $userPermissions
+     * @param Closure(): list<string> $userPermissions
      * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions
      * @param array<int|string, ModelResource> $resources
      */
     private function __construct(
         private string $model,
-        private array $userPermissions,
+        private Closure $userPermissions,
         private array $resourcePermissions,
         private array $resources,
         private ?string $fragment,
@@ -41,7 +41,7 @@ readonly class ModelResource
      * Builds a ModelResource definition. Call ->routes() on the result to register routes.
      *
      * @param class-string<Model> $model
-     * @param list<string> $userPermissions
+     * @param (Closure(): list<string>)|null $userPermissions Invoked per request — defaults to granting all standard model permissions
      * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions Maps each action to the permission string it requires
      * @param array<int|string, ModelResource|class-string<Model>> $resources
      * @param string|null $fragment Custom URL segment (defaults to the model's table name)
@@ -49,13 +49,7 @@ readonly class ModelResource
      */
     public static function of(
         string $model,
-        array $userPermissions = [
-            'model:list',
-            'model:get',
-            'model:create',
-            'model:update',
-            'model:delete',
-        ],
+        ?Closure $userPermissions = null,
         array $resourcePermissions = [
             'list' => 'model:list',
             'get' => 'model:get',
@@ -67,6 +61,8 @@ readonly class ModelResource
         ?string $fragment = null,
         bool $globalSearch = false,
     ): self {
+        $userPermissions ??= fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete'];
+
         $normalizedResources = array_map(function (ModelResource|string $resource): ModelResource {
             return is_string($resource) ? self::of($resource) : $resource;
         }, $resources);
@@ -109,7 +105,7 @@ readonly class ModelResource
     }
 
     /**
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
      */
     private function registerInGroup(string $table, array $constraints): void
     {
@@ -163,7 +159,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param list<ColumnSchema> $schema
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
      */
     private static function list(string $model, string $table, array $schema, array $constraints): RouteInstance
     {
@@ -210,7 +206,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param list<ColumnSchema> $schema
-     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
      * @param list<array{routePrefix: string, model: class-string<Model>, foreignKey: string}> $nestedEntries
      */
     private static function get(string $model, array $schema, array $constraints, array $nestedEntries): RouteInstance
@@ -220,7 +216,7 @@ readonly class ModelResource
             $query = $model::query()->withoutEagerLoads();
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if (!in_array($required, $perms)) {
+                if (!in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
                 $query->where($fk, self::routeInt($request, $param));
@@ -263,7 +259,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param list<ColumnSchema> $schema
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
      */
     private static function create(string $model, array $schema, array $constraints): RouteInstance
     {
@@ -271,7 +267,7 @@ readonly class ModelResource
             $data = self::data($schema, $request);
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if (!in_array($required, $perms)) {
+                if (!in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
                 $parentId = self::routeInt($request, $param);
@@ -298,7 +294,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param list<ColumnSchema> $schema
-     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
      */
     private static function update(string $model, array $schema, array $constraints): RouteInstance
     {
@@ -308,7 +304,7 @@ readonly class ModelResource
             $foreignKeys = [];
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if (!in_array($required, $perms)) {
+                if (!in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
                 $query->where($fk, self::routeInt($request, $param));
@@ -334,7 +330,7 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
+     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
      */
     private static function delete(string $model, array $constraints): RouteInstance
     {
@@ -343,7 +339,7 @@ readonly class ModelResource
             $query = $model::query();
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if (!in_array($required, $perms)) {
+                if (!in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
                 $query->where($fk, self::routeInt($request, $param));

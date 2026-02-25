@@ -12,14 +12,14 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 readonly class ResourceMiddleware
 {
     /**
-     * @param list<string> $userPermissions
+     * @param Closure(): list<string> $userPermissions
      */
-    private function __construct(private string $action, private array $userPermissions) {}
+    private function __construct(private string $action, private Closure $userPermissions) {}
 
     /**
-     * @param list<string> $userPermissions
+     * @param Closure(): list<string> $userPermissions
      */
-    public static function of(string $action, array $userPermissions): self
+    public static function of(string $action, Closure $userPermissions): self
     {
         return new self($action, $userPermissions);
     }
@@ -37,7 +37,7 @@ readonly class ResourceMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!in_array($this->action, $this->userPermissions)) {
+        if (!in_array($this->action, ($this->userPermissions)())) {
             throw new AccessDeniedHttpException();
         }
 

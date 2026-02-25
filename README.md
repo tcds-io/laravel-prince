@@ -3,7 +3,7 @@
 Turn any Eloquent model into a fully working REST API — no controllers, no form requests, no manual routes.
 
 ```php
-ModelResourceBuilder::create(userPermissions: $user->permissions)
+ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
     ->resource(Invoice::class)
     ->resource(Product::class)
     ->routes();
@@ -50,7 +50,7 @@ Register your resources inside `routes/api.php`:
 use Tcds\Io\Prince\ModelResourceBuilder;
 
 Route::prefix('/api/backoffice')->group(function () {
-    ModelResourceBuilder::create(userPermissions: $request->user()->permissions)
+    ModelResourceBuilder::create(userPermissions: fn() => $request->user()->permissions)
         ->resource(Invoice::class, globalSearch: true)
         ->resource(Product::class, globalSearch: true)
         ->routes();
@@ -66,7 +66,7 @@ The package reads each model's `$table` and `$casts` properties to determine rou
 Register sub-resources via a callback. Nested routes are scoped to the parent automatically, and the parent's FK is inferred from the table name (`invoice_id` for `invoices`):
 
 ```php
-ModelResourceBuilder::create(userPermissions: $user->permissions)
+ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
     ->resource(
         model: Invoice::class,
         resources: fn(ModelResourceBuilder $b) => $b
@@ -176,7 +176,7 @@ GET /invoices?status=active        → exact match (also works for enums)
 Opt any resource into cross-resource full-text search with `globalSearch: true`. A single `GET /search?q=value` endpoint is registered covering all opted-in resources:
 
 ```php
-ModelResourceBuilder::create(userPermissions: $user->permissions)
+ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
     ->resource(Invoice::class, globalSearch: true)
     ->resource(Product::class, globalSearch: true)
     ->resource(Customer::class)          // excluded from search
@@ -205,29 +205,42 @@ Each result has `id`, `description` (first matching text column), `resource` (ta
 
 ### User permissions
 
-The permissions the current user holds. Shared across all resources in the builder — pass once, applied everywhere:
+A closure returning the permissions the current user holds. Evaluated per request — so it runs after authentication middleware, can read the request, and supports any auth strategy. Shared across all resources in the builder — pass once, applied everywhere:
 
 ```php
-ModelResourceBuilder::create(userPermissions: $request->user()->permissions)
+ModelResourceBuilder::create(userPermissions: fn() => $request->user()->permissions)
     ->resource(Invoice::class)
     ->resource(Product::class)
     ->routes();
+```
+
+Because it's a closure, you can use any source:
+
+```php
+// From the authenticated user
+fn() => Auth::user()?->permissions ?? []
+
+// From a gate/policy check
+fn() => Gate::allows('admin') ? ['invoices:read', 'invoices:write'] : []
+
+// Hard-coded (e.g. for public read-only endpoints)
+fn() => ['invoices:read']
 ```
 
 ### Resource permissions
 
 The permission string each action _requires_. Defaults to the strings below; override per resource when your app uses different permission names:
 
-| Action   | Default required permission |
-|----------|-----------------------------|
-| `list`   | `model:list`                |
-| `get`    | `model:get`                 |
-| `create` | `model:create`              |
-| `update` | `model:update`              |
-| `delete` | `model:delete`              |
+| Action   | Default required permission    |
+|----------|--------------------------------|
+| `list`   | `default-model:list`           |
+| `get`    | `default-model:get`            |
+| `create` | `default-model:create`         |
+| `update` | `default-model:update`         |
+| `delete` | `default-model:delete`         |
 
 ```php
-ModelResourceBuilder::create(userPermissions: $user->permissions)
+ModelResourceBuilder::create(userPermissions: fn() => Auth::user()?->permissions ?? [])
     ->resource(
         model: Invoice::class,
         resourcePermissions: [
@@ -279,7 +292,7 @@ Enum values are automatically included in the schema:
 Override the URL segment with `fragment` when you want a different path than the table name:
 
 ```php
-ModelResourceBuilder::create(userPermissions: $user->permissions)
+ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
     ->resource(model: Invoice::class, fragment: 'bills')
     ->routes();
 // Routes registered at /bills/... — table name remains invoices in meta/schema
