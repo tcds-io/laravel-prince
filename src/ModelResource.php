@@ -129,18 +129,7 @@ readonly class ModelResource
     private static function list(string $model, string $table, array $schema, array $constraints): RouteInstance
     {
         return Route::get('/', function (Request $request) use ($model, $table, $schema, $constraints) {
-            $query = $model::query()->withoutEagerLoads();
-
-            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if (!in_array($required, $perms)) {
-                    throw new AccessDeniedHttpException();
-                }
-                $parentId = (int) $request->route($param);
-                self::findOrThrow($parentModel, $parentId);
-                $query->where($fk, $parentId);
-            }
-
-            $paginate = $query->paginate(10)->toArray();
+            $paginate = ModelResourceQuery::paginate($model, $constraints, $schema, $request);
 
             return response()->json([
                 'data' => $paginate['data'],
@@ -203,7 +192,7 @@ readonly class ModelResource
                     throw new AccessDeniedHttpException();
                 }
                 $parentId = (int) $request->route($param);
-                self::findOrThrow($parentModel, $parentId);
+                ModelResourceQuery::findOrThrow($parentModel, $parentId);
                 $data[$fk] = $parentId;
             }
 
@@ -290,16 +279,6 @@ readonly class ModelResource
     private function casts(): array
     {
         return (new ReflectionClass($this->model))->getProperty('casts')->getDefaultValue();
-    }
-
-    /**
-     * @template T of Model
-     * @param class-string<T> $model
-     * @return T
-     */
-    private static function findOrThrow(string $model, int $resourceId): Model
-    {
-        return $model::query()->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
     }
 
     /**
