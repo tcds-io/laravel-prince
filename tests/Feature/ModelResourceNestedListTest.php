@@ -59,6 +59,22 @@ class ModelResourceNestedListTest extends ModelResourceNestedTestCase
     }
 
     #[Test]
+    public function list_includes_resource_link_with_full_nested_path(): void
+    {
+        $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
+        $item = TestItem::create(['invoice_id' => $invoice->id, 'description' => 'Item A', 'price' => 10.00]);
+
+        $response = $this->getJson("/invoices/{$invoice->id}/items");
+
+        $response->assertOk();
+        $response->assertJson([
+            'data' => [
+                ['id' => $item->id, '_resource' => "/invoices/{$invoice->id}/items/{$item->id}"],
+            ],
+        ]);
+    }
+
+    #[Test]
     public function list_returns_404_for_unknown_invoice(): void
     {
         $response = $this->getJson('/invoices/999/items');

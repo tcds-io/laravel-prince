@@ -34,6 +34,23 @@ class ModelResourceListTest extends ModelResourceTestCase
     }
 
     #[Test]
+    public function list_includes_resource_link_for_each_item(): void
+    {
+        $invoiceA = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
+        $invoiceB = TestInvoice::create(['title' => 'Invoice B', 'amount' => 200.00]);
+
+        $response = $this->getJson('/invoices');
+
+        $response->assertOk();
+        $response->assertJson([
+            'data' => [
+                ['id' => $invoiceA->id, '_resource' => "/invoices/{$invoiceA->id}"],
+                ['id' => $invoiceB->id, '_resource' => "/invoices/{$invoiceB->id}"],
+            ],
+        ]);
+    }
+
+    #[Test]
     public function list_respects_custom_limit(): void
     {
         TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);

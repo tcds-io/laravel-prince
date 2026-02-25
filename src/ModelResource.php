@@ -15,7 +15,6 @@ use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use ReflectionClass;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -157,14 +156,20 @@ readonly class ModelResource
         return Route::get('/', function (Request $request) use ($model, $table, $schema, $constraints) {
             $paginate = ModelResourceQuery::paginate($model, $constraints, $schema, $request);
 
+            $basePath = rtrim($request->getPathInfo(), '/');
+            /** @var list<array<string, mixed>> $rawData */
+            $rawData = $paginate['data'];
+            $data = array_map(
+                fn(array $item) => [...$item, '_resource' => $basePath . '/' . (is_numeric($item['id']) ? (int) $item['id'] : 0)],
+                $rawData,
+            );
+
             return response()->json([
-                'data' => $paginate['data'],
+                'data' => $data,
                 'meta' => [
                     'resource' => $table,
                     'schema' => $schema,
                     'current_page' => $paginate['current_page'],
-                    'from' => $paginate['from'],
-                    'to' => $paginate['to'],
                     'total' => $paginate['total'],
                     'last_page' => $paginate['last_page'],
                     'per_page' => $paginate['per_page'],
@@ -322,11 +327,16 @@ readonly class ModelResource
         });
     }
 
+    private function instance(): Model
+    {
+        $model = $this->model;
+
+        return new $model();
+    }
+
     private function table(): string
     {
-        $value = (new ReflectionClass($this->model))->getProperty('table')->getDefaultValue();
-
-        return is_string($value) ? $value : '';
+        return $this->instance()->getTable();
     }
 
     /**
@@ -334,14 +344,8 @@ readonly class ModelResource
      */
     private function casts(): array
     {
-        $value = (new ReflectionClass($this->model))->getProperty('casts')->getDefaultValue();
-
-        if (!is_array($value)) {
-            return [];
-        }
-
-        /** @var array<string, mixed> $value */
-        return $value;
+        /** @var array<string, mixed> */
+        return $this->instance()->getCasts();
     }
 
     /**
@@ -399,9 +403,13 @@ readonly class ModelResource
                 'type' => 'enum',
                 ...self::enumColumnSchemaOf($type),
             ],
-            in_array($type, ['bigint', 'integer']) => [
+            in_array($type, ['bigint', 'integer', 'int']) => [
                 'type' => 'integer',
                 'parser' => fn(string $value) => (int) $value,
+            ],
+            in_array($type, ['text', 'varchar', 'char']) => [
+                'type' => 'text',
+                'parser' => fn(string $value) => $value,
             ],
             $type === 'datetime' => [
                 'type' => 'datetime',
