@@ -36,6 +36,7 @@ final class ModelResourceGlobalSearch
      *   %foo%  → LIKE on text/enum columns
      *   foo    → exact match on text/enum columns
      * Numeric and datetime columns are always skipped.
+     * Each record appears at most once per resource regardless of how many text columns match.
      */
     public static function routes(): void
     {
@@ -55,6 +56,9 @@ final class ModelResourceGlobalSearch
             foreach ($entries as ['table' => $table, 'routePrefix' => $prefix, 'schema' => $schema]) {
                 $linkExpr = self::linkSql($prefix);
 
+                // Collect matchable columns for this table: [name, operator, binding_value]
+                $columns = [];
+
                 foreach ($schema as $column) {
                     if (in_array($column->type, ['integer', 'number', 'datetime'], true)) {
                         continue;
@@ -66,9 +70,47 @@ final class ModelResourceGlobalSearch
                         continue;
                     }
 
-                    $unions[] = "SELECT id, `{$column->name}` AS description, '{$table}' AS resource, {$linkExpr} AS link"
-                        . " FROM `{$table}` WHERE `{$column->name}` {$operator} ?";
-                    $bindings[] = $value instanceof BackedEnum ? $value->value : $value;
+                    $columns[] = [
+                        'name' => $column->name,
+                        'operator' => $operator,
+                        'value' => $value instanceof BackedEnum ? $value->value : $value,
+                    ];
+                }
+
+                if ($columns === []) {
+                    continue;
+                }
+
+                // One SELECT per table so each record appears at most once even when
+                // multiple text columns match. The CASE picks the first matching column
+                // as the description; the WHERE filters to rows where any column matches.
+                //
+                // CASE WHEN col1 op ? THEN col1 WHEN col2 op ? THEN col2 END AS description
+                // WHERE col1 op ? OR col2 op ?
+                //
+                // Bindings order: all CASE values first, then all WHERE values.
+                $caseWhen = 'CASE';
+
+                foreach ($columns as ['name' => $name, 'operator' => $op]) {
+                    $caseWhen .= " WHEN `{$name}` {$op} ? THEN `{$name}`";
+                }
+
+                $caseWhen .= ' END';
+
+                $where = implode(' OR ', array_map(
+                    fn(array $col) => "`{$col['name']}` {$col['operator']} ?",
+                    $columns,
+                ));
+
+                $unions[] = "SELECT id, {$caseWhen} AS description, '{$table}' AS resource, {$linkExpr} AS link"
+                    . " FROM `{$table}` WHERE {$where}";
+
+                foreach ($columns as ['value' => $val]) {
+                    $bindings[] = $val; // for CASE
+                }
+
+                foreach ($columns as ['value' => $val]) {
+                    $bindings[] = $val; // for WHERE
                 }
             }
 
