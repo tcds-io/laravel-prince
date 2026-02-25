@@ -93,7 +93,7 @@ readonly class ModelResourceQuery
      *
      * @return array{0: string, 1: mixed}
      */
-    private static function parseFilter(ColumnSchema $column, string $raw): array
+    public static function parseFilter(ColumnSchema $column, string $raw): array
     {
         $isNumericOrDatetime = in_array($column->type, ['integer', 'number', 'datetime']);
         // enum is included: ?currency=E% matches backed string values via LIKE;
