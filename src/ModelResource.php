@@ -11,8 +11,10 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use ReflectionClass;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Throwable;
 
@@ -21,7 +23,26 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param list<string> $userPermissions
-     * @param array{ list: string, get: string, create: string, update: string, delete: string } $actionPermissions
+     * @param array{list: string, get: string, create: string, update: string, delete: string} $actionPermissions
+     * @param array<int|string, ModelResource> $resources
+     */
+    private function __construct(
+        private string $model,
+        private array $userPermissions,
+        private array $actionPermissions,
+        private array $resources,
+        private ?string $fragment,
+    ) {
+    }
+
+    /**
+     * Builds a ModelResource definition. Call ->routes() on the result to register routes.
+     *
+     * @param class-string<Model> $model
+     * @param list<string> $userPermissions
+     * @param array{list: string, get: string, create: string, update: string, delete: string} $actionPermissions
+     * @param array<int|string, ModelResource|class-string<Model>> $resources
+     * @param string|null $fragment Custom URL segment (defaults to the model's table name)
      */
     public static function of(
         string $model,
@@ -40,33 +61,86 @@ readonly class ModelResource
             'delete' => 'model:delete',
         ],
         array $resources = [],
-    ): void {
-        $reflection = new ReflectionClass($model);
-        $table = $reflection->getProperty('table')->getDefaultValue();
-        $casts = $reflection->getProperty('casts')->getDefaultValue();
+        ?string $fragment = null,
+    ): static {
+        $normalizedResources = array_map(function ($resource) {
+            return is_string($resource) ? static::of($resource) : $resource;
+        }, $resources);
 
-        Route::prefix($table)->group(function () use ($model, $table, $casts, $userPermissions, $actionPermissions) {
-            $schema = self::schema($table, $casts);
+        return new static($model, $userPermissions, $actionPermissions, $normalizedResources, $fragment);
+    }
 
-            self::list($model, $table, $schema)->middleware(ResourceMiddleware::of($actionPermissions['list'], $userPermissions));
-            self::get($model, $schema)->middleware(ResourceMiddleware::of($actionPermissions['get'], $userPermissions));
-            self::create($model, $schema)->middleware(ResourceMiddleware::of($actionPermissions['create'], $userPermissions));
-            self::update($model, $schema)->middleware(ResourceMiddleware::of($actionPermissions['update'], $userPermissions));
-            self::delete($model)->middleware(ResourceMiddleware::of($actionPermissions['delete'], $userPermissions));
+    /**
+     * Registers all routes for this resource and any nested resources recursively.
+     */
+    public function routes(): void
+    {
+        $table = $this->table();
+
+        Route::prefix($this->routePrefix())->group(function () use ($table) {
+            $this->registerInGroup($table, []);
         });
+    }
+
+    private function routePrefix(): string
+    {
+        return $this->fragment ?? $this->table();
+    }
+
+    /**
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
+     */
+    private function registerInGroup(string $table, array $constraints): void
+    {
+        $schema = self::schema($table, $this->casts());
+
+        self::list($this->model, $table, $schema, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['list'], $this->userPermissions));
+        self::get($this->model, $schema, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['get'], $this->userPermissions));
+        self::create($this->model, $schema, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['create'], $this->userPermissions));
+        self::update($this->model, $schema, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['update'], $this->userPermissions));
+        self::delete($this->model, $constraints)->middleware(ResourceMiddleware::of($this->actionPermissions['delete'], $this->userPermissions));
+
+        foreach ($this->resources as $foreignKey => $nestedResource) {
+            if (is_int($foreignKey)) {
+                $foreignKey = Str::singular($table) . '_id';
+            }
+
+            $parentParam = Str::singular($table) . 'Id';
+            $nestedConstraints = [...$constraints, [
+                'param' => $parentParam,
+                'fk' => $foreignKey,
+                'model' => $this->model,
+                'requiredPermission' => $this->actionPermissions['get'],
+                'userPermissions' => $this->userPermissions,
+            ]];
+            $nestedTable = $nestedResource->table();
+
+            Route::prefix('{' . $parentParam . '}/' . $nestedResource->routePrefix())->group(function () use ($nestedResource, $nestedTable, $nestedConstraints) {
+                $nestedResource->registerInGroup($nestedTable, $nestedConstraints);
+            });
+        }
     }
 
     /**
      * @param class-string<Model> $model
      * @param array<string, ColumnSchema> $schema
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
      */
-    private static function list(string $model, string $table, array $schema): RouteInstance
+    private static function list(string $model, string $table, array $schema, array $constraints): RouteInstance
     {
-        return Route::get('/', function () use ($model, $table, $schema) {
-            $paginate = $model::query()
-                ->withoutEagerLoads()
-                ->paginate(10)
-                ->toArray();
+        return Route::get('/', function (Request $request) use ($model, $table, $schema, $constraints) {
+            $query = $model::query()->withoutEagerLoads();
+
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                if (!in_array($required, $perms)) {
+                    throw new AccessDeniedHttpException();
+                }
+                $parentId = (int) $request->route($param);
+                self::findOrThrow($parentModel, $parentId);
+                $query->where($fk, $parentId);
+            }
+
+            $paginate = $query->paginate(10)->toArray();
 
             return response()->json([
                 'data' => $paginate['data'],
@@ -87,11 +161,22 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param array<string, ColumnSchema> $schema
+     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
      */
-    private static function get(string $model, array $schema): RouteInstance
+    private static function get(string $model, array $schema, array $constraints): RouteInstance
     {
-        return Route::get("/{resourceId}", function (int $resourceId) use ($model, $schema) {
-            $record = self::findOrThrow($model, $resourceId);
+        return Route::get('/{resourceId}', function (Request $request) use ($model, $schema, $constraints) {
+            $resourceId = (int) $request->route('resourceId');
+            $query = $model::query();
+
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                if (!in_array($required, $perms)) {
+                    throw new AccessDeniedHttpException();
+                }
+                $query->where($fk, (int) $request->route($param));
+            }
+
+            $record = $query->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
 
             return response()->json([
                 'data' => $record,
@@ -106,11 +191,21 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param array<string, ColumnSchema> $schema
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: list<string>}> $constraints
      */
-    private static function create(string $model, array $schema): RouteInstance
+    private static function create(string $model, array $schema, array $constraints): RouteInstance
     {
-        return Route::post("/", function (Request $request) use ($model, $schema) {
+        return Route::post('/', function (Request $request) use ($model, $schema, $constraints) {
             $data = self::data($schema, $request);
+
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                if (!in_array($required, $perms)) {
+                    throw new AccessDeniedHttpException();
+                }
+                $parentId = (int) $request->route($param);
+                self::findOrThrow($parentModel, $parentId);
+                $data[$fk] = $parentId;
+            }
 
             try {
                 /** @var object{ id: int } $record */
@@ -129,26 +224,72 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param array<string, ColumnSchema> $schema
+     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
      */
-    public static function update(string $model, array $schema): RouteInstance
+    private static function update(string $model, array $schema, array $constraints): RouteInstance
     {
-        return Route::patch("/{resourceId}", function (int $resourceId, Request $request) use ($model, $schema) {
-            $record = self::findOrThrow($model, $resourceId);
+        return Route::patch('/{resourceId}', function (Request $request) use ($model, $schema, $constraints) {
+            $resourceId = (int) $request->route('resourceId');
+            $query = $model::query();
+            $foreignKeys = [];
+
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                if (!in_array($required, $perms)) {
+                    throw new AccessDeniedHttpException();
+                }
+                $query->where($fk, (int) $request->route($param));
+                $foreignKeys[] = $fk;
+            }
+
+            $record = $query->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
+
             $data = array_filter(self::data($schema, $request));
+
+            foreach ($foreignKeys as $fk) {
+                unset($data[$fk]);
+            }
+
             $record->update($data);
 
             return response(status: Response::HTTP_NO_CONTENT);
         });
     }
 
-    public static function delete(string $model): RouteInstance
+    /**
+     * @param class-string<Model> $model
+     * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: list<string>}> $constraints
+     */
+    private static function delete(string $model, array $constraints): RouteInstance
     {
-        return Route::delete("/{resourceId}", function (int $resourceId) use ($model) {
-            $record = self::findOrThrow($model, $resourceId);
+        return Route::delete('/{resourceId}', function (Request $request) use ($model, $constraints) {
+            $resourceId = (int) $request->route('resourceId');
+            $query = $model::query();
+
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                if (!in_array($required, $perms)) {
+                    throw new AccessDeniedHttpException();
+                }
+                $query->where($fk, (int) $request->route($param));
+            }
+
+            $record = $query->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
             $record->delete();
 
             return response(status: Response::HTTP_NO_CONTENT);
         });
+    }
+
+    private function table(): string
+    {
+        return (new ReflectionClass($this->model))->getProperty('table')->getDefaultValue();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function casts(): array
+    {
+        return (new ReflectionClass($this->model))->getProperty('casts')->getDefaultValue();
     }
 
     /**
@@ -181,7 +322,7 @@ readonly class ModelResource
     /**
      * @return array<string, ColumnSchema>
      */
-    private static function schema($table, $casts): array
+    private static function schema(string $table, array $casts): array
     {
         return collect(Schema::getColumns($table))
             ->map(function ($item) use ($casts) {

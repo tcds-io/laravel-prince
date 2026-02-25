@@ -1,5 +1,5 @@
 {
-  "name": "tcds-io/laravel-model-api",
+  "name": "tcds-io/laravel-prince",
   "description": "A Simple way to create rest API resources for your Laravel models.",
   "type": "library",
   "license": "MIT",

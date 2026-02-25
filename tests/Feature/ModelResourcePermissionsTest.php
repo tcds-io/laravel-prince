@@ -17,7 +17,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function list_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: []);
+        ModelResource::of(TestInvoice::class, userPermissions: [])->routes();
 
         $response = $this->getJson('/invoices');
 
@@ -27,7 +27,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function list_is_accessible_with_list_permission(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: ['model:list']);
+        ModelResource::of(TestInvoice::class, userPermissions: ['model:list'])->routes();
 
         $response = $this->getJson('/invoices');
 
@@ -39,7 +39,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function get_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: []);
+        ModelResource::of(TestInvoice::class, userPermissions: [])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
 
         $response = $this->getJson("/invoices/{$invoice->id}");
@@ -50,7 +50,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function get_is_accessible_with_get_permission(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: ['model:get']);
+        ModelResource::of(TestInvoice::class, userPermissions: ['model:get'])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
 
         $response = $this->getJson("/invoices/{$invoice->id}");
@@ -63,7 +63,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function create_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: []);
+        ModelResource::of(TestInvoice::class, userPermissions: [])->routes();
 
         $response = $this->postJson('/invoices', ['title' => 'Invoice A', 'amount' => '100.00']);
 
@@ -73,7 +73,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function create_is_accessible_with_create_permission(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: ['model:create']);
+        ModelResource::of(TestInvoice::class, userPermissions: ['model:create'])->routes();
 
         $response = $this->postJson('/invoices', ['title' => 'Invoice A', 'amount' => '100.00']);
 
@@ -85,7 +85,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function update_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: []);
+        ModelResource::of(TestInvoice::class, userPermissions: [])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
 
         $response = $this->patchJson("/invoices/{$invoice->id}", ['title' => 'Invoice A (updated)']);
@@ -96,7 +96,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function update_is_accessible_with_update_permission(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: ['model:update']);
+        ModelResource::of(TestInvoice::class, userPermissions: ['model:update'])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
 
         $response = $this->patchJson("/invoices/{$invoice->id}", ['title' => 'Invoice A (updated)']);
@@ -109,7 +109,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function delete_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: []);
+        ModelResource::of(TestInvoice::class, userPermissions: [])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
 
         $response = $this->deleteJson("/invoices/{$invoice->id}");
@@ -120,7 +120,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function delete_is_accessible_with_delete_permission(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: ['model:delete']);
+        ModelResource::of(TestInvoice::class, userPermissions: ['model:delete'])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
 
         $response = $this->deleteJson("/invoices/{$invoice->id}");

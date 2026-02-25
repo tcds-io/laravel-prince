@@ -43,7 +43,7 @@ Every response includes a `meta.schema` block so clients always know the exact s
 ## Installation
 
 ```bash
-composer require tcds-io/laravel-model-api
+composer require tcds-io/laravel-prince
 ```
 
 Laravel auto-discovers the package. No extra configuration needed.
