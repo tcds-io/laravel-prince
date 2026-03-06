@@ -294,6 +294,8 @@ Enum values are automatically included in the schema:
 
 Register extra endpoints on a resource with `actions`. Use `ResourceAction::{method}()` — paths containing `{id}` are item-level (the record is resolved and injected automatically); all other paths are collection-level.
 
+The `action` must be an **invokable class** (a class with `__invoke`). Laravel's IoC container resolves and calls it, so any type-hinted dependencies are injected automatically.
+
 ```php
 use Tcds\Io\Prince\ResourceAction;
 
@@ -311,7 +313,7 @@ ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
             // Collection-level — POST /invoices/import
             ResourceAction::post(
                 path: '/import',
-                action: fn(Request $request) => ImportInvoicesAction::run($request),
+                action: ImportInvoicesAction::class,
                 permission: 'invoices:write',
             ),
 
@@ -319,11 +321,11 @@ ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
             // The matching Invoice is resolved and injected; returns 404 if not found.
             ResourceAction::post(
                 path: '/{id}/send',
-                action: fn(Invoice $invoice) => SendInvoiceAction::run($invoice),
+                action: SendInvoiceAction::class,
                 permission: 'invoices:send',
             ),
 
-            // Invokable controller — GET /invoices/{id}/pdf
+            // GET /invoices/{id}/pdf
             ResourceAction::get(
                 path: '/{id}/pdf',
                 action: InvoicePdfController::class,
