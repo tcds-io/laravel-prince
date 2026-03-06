@@ -59,6 +59,7 @@ final class ModelResourceBuilder
      * @param string|null $foreignKey FK column referencing the parent table (only meaningful when used inside a $resources callback; defaults to {singular_parent_table}_id)
      * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions Maps each action to the permission string it requires
      * @param list<ResourceAction> $actions Extra routes attached to this resource
+     * @param array<string, class-string> $events Lifecycle event overrides — merged with defaults (creating, created, updating, updated, deleting, deleted)
      */
     public function resource(
         string $model,
@@ -74,6 +75,7 @@ final class ModelResourceBuilder
             'delete' => 'default-model:delete',
         ],
         array $actions = [],
+        array $events = [],
     ): self {
         $nestedBuilder = new self($this->userPermissions);
 
@@ -100,6 +102,7 @@ final class ModelResourceBuilder
             segment: $segment,
             globalSearch: $globalSearch,
             actions: $actions,
+            events: $events,
         );
 
         $this->entries[] = ['resource' => $resource, 'foreignKey' => $foreignKey];
