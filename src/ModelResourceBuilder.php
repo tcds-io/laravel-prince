@@ -55,15 +55,16 @@ final class ModelResourceBuilder
      * @param class-string<Model> $model
      * @param (Closure(self): void)|null $resources Callback to define nested resources; the nested builder inherits the same userPermissions
      * @param bool $globalSearch Whether to include this resource in the global /search route
-     * @param string|null $fragment Custom URL segment (defaults to the model's table name)
+     * @param string|null $segment Custom URL segment (defaults to the model's table name)
      * @param string|null $foreignKey FK column referencing the parent table (only meaningful when used inside a $resources callback; defaults to {singular_parent_table}_id)
      * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions Maps each action to the permission string it requires
+     * @param list<ResourceAction> $actions Extra routes attached to this resource
      */
     public function resource(
         string $model,
         ?Closure $resources = null,
         bool $globalSearch = false,
-        ?string $fragment = null,
+        ?string $segment = null,
         ?string $foreignKey = null,
         array $resourcePermissions = [
             'list' => 'default-model:list',
@@ -72,6 +73,7 @@ final class ModelResourceBuilder
             'update' => 'default-model:update',
             'delete' => 'default-model:delete',
         ],
+        array $actions = [],
     ): self {
         $nestedBuilder = new self($this->userPermissions);
 
@@ -95,8 +97,9 @@ final class ModelResourceBuilder
             userPermissions: $this->userPermissions,
             resourcePermissions: $resourcePermissions,
             resources: $nestedResources,
-            fragment: $fragment,
+            segment: $segment,
             globalSearch: $globalSearch,
+            actions: $actions,
         );
 
         $this->entries[] = ['resource' => $resource, 'foreignKey' => $foreignKey];

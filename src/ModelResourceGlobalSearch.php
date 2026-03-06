@@ -103,8 +103,8 @@ readonly class ModelResourceGlobalSearch
                     $columns,
                 ));
 
-                $unions[] = "SELECT " . self::quoteIdentifier('id') . ", {$caseWhen} AS description, '{$table}' AS resource, {$linkExpr} AS link"
-                    . " FROM " . self::quoteIdentifier($table) . " WHERE {$where}";
+                $unions[] = 'SELECT ' . self::quoteIdentifier('id') . ", {$caseWhen} AS description, '{$table}' AS resource, {$linkExpr} AS link"
+                    . ' FROM ' . self::quoteIdentifier($table) . " WHERE {$where}";
 
                 foreach ($columns as ['value' => $val]) {
                     $bindings[] = $val; // for CASE

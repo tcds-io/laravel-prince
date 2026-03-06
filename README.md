@@ -290,13 +290,63 @@ Enum values are automatically included in the schema:
 
 ---
 
+## Actions
+
+Register extra endpoints on a resource with `actions`. Use `ResourceAction::{method}()` — paths containing `{id}` are item-level (the record is resolved and injected automatically); all other paths are collection-level.
+
+```php
+use Tcds\Io\Prince\ResourceAction;
+
+ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
+    ->resource(
+        model: Invoice::class,
+        resourcePermissions: [
+            'list'   => 'invoices:read',
+            'get'    => 'invoices:read',
+            'create' => 'invoices:write',
+            'update' => 'invoices:write',
+            'delete' => 'invoices:delete',
+        ],
+        actions: [
+            // Collection-level — POST /invoices/import
+            ResourceAction::post(
+                path: '/import',
+                action: fn(Request $request) => ImportInvoicesAction::run($request),
+                permission: 'invoices:write',
+            ),
+
+            // Item-level — POST /invoices/{id}/send
+            // The matching Invoice is resolved and injected; returns 404 if not found.
+            ResourceAction::post(
+                path: '/{id}/send',
+                action: fn(Invoice $invoice) => SendInvoiceAction::run($invoice),
+                permission: 'invoices:send',
+            ),
+
+            // Invokable controller — GET /invoices/{id}/pdf
+            ResourceAction::get(
+                path: '/{id}/pdf',
+                action: InvoicePdfController::class,
+                permission: 'invoices:read',
+            ),
+        ],
+    )
+    ->routes();
+```
+
+**Collection actions** (`/import`) are registered before `/{id}` routes so literal path segments are never captured as record IDs.
+
+**Item actions** (`/{id}/send`) resolve the record from the database before calling the action. The model instance is injected by type — any parameter type-hinted with the model class receives it. The full Laravel IoC is available for additional injectables (`Request`, services, etc.). `permission` is optional; omit it to allow unauthenticated access to that action.
+
+---
+
 ## Custom URL segment
 
-Override the URL segment with `fragment` when you want a different path than the table name:
+Override the URL segment with `segment` when you want a different path than the table name:
 
 ```php
 ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
-    ->resource(model: Invoice::class, fragment: 'bills')
+    ->resource(model: Invoice::class, segment: 'bills')
     ->routes();
 // Routes registered at /bills/... — table name remains invoices in meta/schema
 ```

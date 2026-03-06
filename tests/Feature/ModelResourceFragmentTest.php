@@ -11,11 +11,11 @@ class ModelResourceFragmentTest extends ModelResourceTestCase
 {
     protected function registerRoutes(): void
     {
-        ModelResource::of(TestInvoice::class, fragment: 'my-invoices')->routes();
+        ModelResource::of(TestInvoice::class, segment: 'my-invoices')->routes();
     }
 
     #[Test]
-    public function routes_are_accessible_at_the_custom_fragment(): void
+    public function routes_are_accessible_at_the_custom_segment(): void
     {
         $response = $this->getJson('/my-invoices');
 
