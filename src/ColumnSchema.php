@@ -35,6 +35,6 @@ readonly class ColumnSchema implements JsonSerializable
     {
         $value = $request->input($this->name);
 
-        return $value ? call_user_func($this->parser, $value) : null;
+        return $value !== null && $value !== '' ? call_user_func($this->parser, $value) : null;
     }
 }

@@ -41,7 +41,7 @@ And when global search is enabled:
 composer require tcds-io/laravel-prince
 ```
 
-Laravel auto-discovers the package. No extra configuration needed.
+No configuration needed — call it directly from your routes file.
 
 ---
 

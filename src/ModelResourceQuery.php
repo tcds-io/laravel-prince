@@ -28,7 +28,7 @@ readonly class ModelResourceQuery
             if (!in_array($required, ($perms)())) {
                 throw new AccessDeniedHttpException();
             }
-            $parentId = self::routeInt($request, $param);
+            $parentId = self::routeId($request, $param);
             self::findOrThrow($parentModel, $parentId);
             $query->where($fk, $parentId);
         }
@@ -149,18 +149,24 @@ readonly class ModelResourceQuery
      * @param class-string<T> $model
      * @return T
      */
-    public static function findOrThrow(string $model, int $resourceId): Model
+    public static function findOrThrow(string $model, int|string $resourceId): Model
     {
         return $model::query()->findOr($resourceId, fn() => throw new ResourceNotFoundException($resourceId));
     }
 
     /**
-     * Safely extracts an integer route parameter, returning 0 if absent or non-string.
+     * Extracts a route parameter as int or string.
+     * Returns an int for numeric values (e.g. auto-increment IDs) and a string otherwise
+     * (e.g. UUIDs). Falls back to 0 only when the parameter is absent — which indicates a
+     * routing misconfiguration rather than a normal request.
      */
-    private static function routeInt(Request $request, string $param): int
+    private static function routeId(Request $request, string $param): int|string
     {
         $value = $request->route($param);
+        if (!is_string($value)) {
+            return 0;
+        }
 
-        return is_string($value) ? (int) $value : 0;
+        return is_numeric($value) ? (int) $value : $value;
     }
 }
