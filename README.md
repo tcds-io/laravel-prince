@@ -1,4 +1,7 @@
-# Laravel Model API
+# Prince! Your Laravel Model API
+
+> "Dearly beloved, we are gathered here today to get through this thing called life."
+> — Prince
 
 Turn any Eloquent model into a fully working REST API — no controllers, no form requests, no manual routes.
 
