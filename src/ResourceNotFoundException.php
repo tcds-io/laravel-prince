@@ -6,7 +6,7 @@ namespace Tcds\Io\Prince;
 
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
-readonly class ResourceNotFoundException extends NotFoundHttpException
+class ResourceNotFoundException extends NotFoundHttpException
 {
     public function __construct(int|string $id)
     {

@@ -27,14 +27,16 @@ readonly class ModelResource
      * @param Closure(): list<string> $userPermissions
      * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions
      * @param array<int|string, ModelResource> $resources
+     * @param list<ResourceAction> $actions
      */
     private function __construct(
         private string $model,
         private Closure $userPermissions,
         private array $resourcePermissions,
         private array $resources,
-        private ?string $fragment,
+        private ?string $segment,
         public bool $globalSearch = false,
+        private array $actions = [],
     ) {}
 
     /**
@@ -44,8 +46,9 @@ readonly class ModelResource
      * @param (Closure(): list<string>)|null $userPermissions Invoked per request — defaults to granting all standard model permissions
      * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions Maps each action to the permission string it requires
      * @param array<int|string, ModelResource|class-string<Model>> $resources
-     * @param string|null $fragment Custom URL segment (defaults to the model's table name)
+     * @param string|null $segment Custom URL segment (defaults to the model's table name)
      * @param bool $globalSearch Whether this resource is included in global search
+     * @param list<ResourceAction> $actions Extra routes attached to this resource
      */
     public static function of(
         string $model,
@@ -58,8 +61,9 @@ readonly class ModelResource
             'delete' => 'model:delete',
         ],
         array $resources = [],
-        ?string $fragment = null,
+        ?string $segment = null,
         bool $globalSearch = false,
+        array $actions = [],
     ): self {
         $userPermissions ??= fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete'];
 
@@ -67,7 +71,7 @@ readonly class ModelResource
             return is_string($resource) ? self::of($resource) : $resource;
         }, $resources);
 
-        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $fragment, $globalSearch);
+        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $actions);
     }
 
     /**
@@ -101,7 +105,7 @@ readonly class ModelResource
 
     private function routePrefix(): string
     {
-        return $this->fragment ?? $this->table();
+        return $this->segment ?? $this->table();
     }
 
     /**
@@ -127,13 +131,27 @@ readonly class ModelResource
 
         $nestedResourceNames = array_column($nestedEntries, 'routePrefix');
 
-        // /_schema must be registered before /{resourceId} to avoid being captured as an ID
+        // /_schema must be registered before /{resourceId} to avoid being captured as an ID.
+        // Collection actions (no {id} in path) must also precede /{resourceId} for the same reason.
         self::schemaRoute($table, $schema, $nestedResourceNames)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['list'], $this->userPermissions));
+
+        foreach ($this->actions as $action) {
+            if (!$action->isItemAction()) {
+                $this->registerAction($action, $constraints);
+            }
+        }
+
         self::list($this->model, $table, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['list'], $this->userPermissions));
         self::get($this->model, $schema, $constraints, $nestedEntries)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['get'], $this->userPermissions));
         self::create($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['create'], $this->userPermissions));
         self::update($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['update'], $this->userPermissions));
         self::delete($this->model, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['delete'], $this->userPermissions));
+
+        foreach ($this->actions as $action) {
+            if ($action->isItemAction()) {
+                $this->registerAction($action, $constraints);
+            }
+        }
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
             if (is_int($foreignKey)) {
@@ -167,10 +185,10 @@ readonly class ModelResource
             $paginate = ModelResourceQuery::paginate($model, $constraints, $schema, $request);
 
             $basePath = rtrim($request->getPathInfo(), '/');
-            /** @var list<array<string, mixed>> $rawData */
+            /** @var list<array{id: int|string, ...}> $rawData */
             $rawData = $paginate['data'];
             $data = array_map(
-                fn(array $item) => [...$item, '_resource' => $basePath . '/' . $item['id']],
+                fn(array $item) => [...$item, '_resource' => $basePath . '/' . (string) $item['id']],
                 $rawData,
             );
 
@@ -231,7 +249,7 @@ readonly class ModelResource
             $data = $record->toArray();
 
             foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'model' => $nestedModel, 'foreignKey' => $foreignKey]) {
-                /** @var list<array<string, mixed>> $nestedItems */
+                /** @var list<array{id: int|string, ...}> $nestedItems */
                 $nestedItems = $nestedModel::query()
                     ->withoutEagerLoads()
                     ->where($foreignKey, $resourceId)
@@ -240,7 +258,7 @@ readonly class ModelResource
 
                 $nestedBasePath = $basePath . '/' . $routePrefix;
                 $data[$routePrefix] = array_map(
-                    fn(array $item) => [...$item, '_resource' => $nestedBasePath . '/' . $item['id']],
+                    fn(array $item) => [...$item, '_resource' => $nestedBasePath . '/' . (string) $item['id']],
                     $nestedItems,
                 );
             }
@@ -353,6 +371,67 @@ readonly class ModelResource
 
             return response(status: Response::HTTP_NO_CONTENT);
         });
+    }
+
+    /**
+     * Registers a single custom action route within the current route group.
+     *
+     * Item actions (path contains {id}): the matching record is resolved from the DB and injected
+     * into the callback via the IoC container. Returns 404 if not found.
+     * Collection actions: any parent constraints are validated; the callback receives no implicit
+     * arguments beyond what the IoC container can inject (Request, services, etc.).
+     *
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
+     */
+    private function registerAction(ResourceAction $action, array $constraints): void
+    {
+        $model = $this->model;
+        $userPermissions = $this->userPermissions;
+
+        if ($action->isItemAction()) {
+            $closure = function (Request $request) use ($model, $action, $constraints) {
+                $id = self::routeId($request, 'id');
+                $query = $model::query();
+
+                foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                    if (!in_array($required, ($perms)())) {
+                        throw new AccessDeniedHttpException();
+                    }
+                    $query->where($fk, self::routeId($request, $param));
+                }
+
+                $record = $query->find($id);
+                if ($record === null) {
+                    throw new ResourceNotFoundException($id);
+                }
+
+                return app()->call($action->action, [$model => $record]);
+            };
+        } else {
+            $closure = function (Request $request) use ($action, $constraints) {
+                foreach ($constraints as ['param' => $param, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                    if (!in_array($required, ($perms)())) {
+                        throw new AccessDeniedHttpException();
+                    }
+                    ModelResourceQuery::findOrThrow($parentModel, self::routeId($request, $param));
+                }
+
+                return app()->call($action->action);
+            };
+        }
+
+        $route = match ($action->method) {
+            'GET'    => Route::get($action->path, $closure),
+            'POST'   => Route::post($action->path, $closure),
+            'PUT'    => Route::put($action->path, $closure),
+            'PATCH'  => Route::patch($action->path, $closure),
+            'DELETE' => Route::delete($action->path, $closure),
+            default  => throw new \LogicException("Unsupported HTTP method: {$action->method}"),
+        };
+
+        if ($action->permission !== null) {
+            $route->middleware((string) ResourceMiddleware::of($action->permission, $userPermissions));
+        }
     }
 
     private function instance(): Model

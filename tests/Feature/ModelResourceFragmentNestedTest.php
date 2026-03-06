@@ -12,12 +12,12 @@ class ModelResourceFragmentNestedTest extends ModelResourceNestedTestCase
     protected function registerRoutes(): void
     {
         ModelResource::of(TestInvoice::class, resources: [
-            ModelResource::of(TestItem::class, fragment: 'line-items'),
+            ModelResource::of(TestItem::class, segment: 'line-items'),
         ])->routes();
     }
 
     #[Test]
-    public function nested_routes_are_accessible_at_the_custom_fragment(): void
+    public function nested_routes_are_accessible_at_the_custom_segment(): void
     {
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
         TestItem::create(['invoice_id' => $invoice->id, 'description' => 'Item A', 'price' => 10.00]);
