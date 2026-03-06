@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Test\Tcds\Io\Prince\Feature;
 
-use Illuminate\Http\Request;
 use Tcds\Io\Prince\ModelResource;
 use Tcds\Io\Prince\ResourceAction;
+use Test\Tcds\Io\Prince\Stubs\Actions\ExportInvoicesAction;
+use Test\Tcds\Io\Prince\Stubs\Actions\SearchCustomAction;
+use Test\Tcds\Io\Prince\Stubs\Actions\SendInvoiceAction;
 
 class ModelResourceActionsTest extends ModelResourceTestCase
 {
@@ -17,15 +19,15 @@ class ModelResourceActionsTest extends ModelResourceTestCase
             actions: [
                 ResourceAction::get(
                     path: '/export',
-                    action: fn() => response()->json(['exported' => true]),
+                    action: ExportInvoicesAction::class,
                 ),
                 ResourceAction::get(
                     path: '/search-custom',
-                    action: fn(Request $request) => response()->json(['q' => $request->query('q')]),
+                    action: SearchCustomAction::class,
                 ),
                 ResourceAction::post(
                     path: '/{id}/send',
-                    action: fn(TestInvoice $invoice) => response()->json(['sent' => $invoice->id]),
+                    action: SendInvoiceAction::class,
                     permission: 'invoices:send',
                 ),
             ],
@@ -74,7 +76,7 @@ class ModelResourceActionsTest extends ModelResourceTestCase
             actions: [
                 ResourceAction::post(
                     path: '/{id}/send',
-                    action: fn(TestInvoice $invoice) => response()->json(['sent' => $invoice->id]),
+                    action: SendInvoiceAction::class,
                     permission: 'invoices:send',
                 ),
             ],

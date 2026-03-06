@@ -12,12 +12,20 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RouteInstance;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Tcds\Io\Prince\Events\MutableDataEvent;
+use Tcds\Io\Prince\Events\ResourceCreated;
+use Tcds\Io\Prince\Events\ResourceCreating;
+use Tcds\Io\Prince\Events\ResourceDeleted;
+use Tcds\Io\Prince\Events\ResourceDeleting;
+use Tcds\Io\Prince\Events\ResourceUpdated;
+use Tcds\Io\Prince\Events\ResourceUpdating;
 use Throwable;
 
 readonly class ModelResource
@@ -28,6 +36,7 @@ readonly class ModelResource
      * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions
      * @param array<int|string, ModelResource> $resources
      * @param list<ResourceAction> $actions
+     * @param array<string, class-string> $events
      */
     private function __construct(
         private string $model,
@@ -37,6 +46,7 @@ readonly class ModelResource
         private ?string $segment,
         public bool $globalSearch = false,
         private array $actions = [],
+        private array $events = [],
     ) {}
 
     /**
@@ -49,6 +59,7 @@ readonly class ModelResource
      * @param string|null $segment Custom URL segment (defaults to the model's table name)
      * @param bool $globalSearch Whether this resource is included in global search
      * @param list<ResourceAction> $actions Extra routes attached to this resource
+     * @param array<string, class-string> $events Lifecycle event overrides — merged with defaults (creating, created, updating, updated, deleting, deleted)
      */
     public static function of(
         string $model,
@@ -64,6 +75,7 @@ readonly class ModelResource
         ?string $segment = null,
         bool $globalSearch = false,
         array $actions = [],
+        array $events = [],
     ): self {
         $userPermissions ??= fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete'];
 
@@ -71,7 +83,16 @@ readonly class ModelResource
             return is_string($resource) ? self::of($resource) : $resource;
         }, $resources);
 
-        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $actions);
+        $resolvedEvents = array_merge([
+            'creating' => ResourceCreating::class,
+            'created'  => ResourceCreated::class,
+            'updating' => ResourceUpdating::class,
+            'updated'  => ResourceUpdated::class,
+            'deleting' => ResourceDeleting::class,
+            'deleted'  => ResourceDeleted::class,
+        ], $events);
+
+        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $actions, $resolvedEvents);
     }
 
     /**
@@ -143,9 +164,9 @@ readonly class ModelResource
 
         self::list($this->model, $table, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['list'], $this->userPermissions));
         self::get($this->model, $schema, $constraints, $nestedEntries)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['get'], $this->userPermissions));
-        self::create($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['create'], $this->userPermissions));
-        self::update($this->model, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['update'], $this->userPermissions));
-        self::delete($this->model, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['delete'], $this->userPermissions));
+        self::create($this->model, $schema, $constraints, $this->events)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['create'], $this->userPermissions));
+        self::update($this->model, $schema, $constraints, $this->events)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['update'], $this->userPermissions));
+        self::delete($this->model, $constraints, $this->events)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['delete'], $this->userPermissions));
 
         foreach ($this->actions as $action) {
             if ($action->isItemAction()) {
@@ -278,10 +299,11 @@ readonly class ModelResource
      * @param class-string<Model> $model
      * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<string, class-string> $events
      */
-    private static function create(string $model, array $schema, array $constraints): RouteInstance
+    private static function create(string $model, array $schema, array $constraints, array $events): RouteInstance
     {
-        return Route::post('/', function (Request $request) use ($model, $schema, $constraints) {
+        return Route::post('/', function (Request $request) use ($model, $schema, $constraints, $events) {
             $data = self::data($schema, $request);
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
@@ -291,6 +313,12 @@ readonly class ModelResource
                 $parentId = self::routeId($request, $param);
                 ModelResourceQuery::findOrThrow($parentModel, $parentId);
                 $data[$fk] = $parentId;
+            }
+
+            $creatingEvent = new $events['creating']($model, $data);
+            Event::dispatch($creatingEvent);
+            if ($creatingEvent instanceof MutableDataEvent) {
+                $data = $creatingEvent->data;
             }
 
             try {
@@ -303,6 +331,8 @@ readonly class ModelResource
                 throw new BadRequestHttpException(is_string($error) ? $error : 'Failed to create resource');
             }
 
+            Event::dispatch(new $events['created']($record));
+
             return response()->json([
                 'id' => $record->id,
             ]);
@@ -313,10 +343,11 @@ readonly class ModelResource
      * @param class-string<Model> $model
      * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<string, class-string> $events
      */
-    private static function update(string $model, array $schema, array $constraints): RouteInstance
+    private static function update(string $model, array $schema, array $constraints, array $events): RouteInstance
     {
-        return Route::patch('/{resourceId}', function (Request $request) use ($model, $schema, $constraints) {
+        return Route::patch('/{resourceId}', function (Request $request) use ($model, $schema, $constraints, $events) {
             $resourceId = self::routeId($request, 'resourceId');
             $query = $model::query();
             $foreignKeys = [];
@@ -340,7 +371,15 @@ readonly class ModelResource
                 unset($data[$fk]);
             }
 
+            $updatingEvent = new $events['updating']($record, $data);
+            Event::dispatch($updatingEvent);
+            if ($updatingEvent instanceof MutableDataEvent) {
+                $data = $updatingEvent->data;
+            }
+
             $record->update($data);
+
+            Event::dispatch(new $events['updated']($record));
 
             return response(status: Response::HTTP_NO_CONTENT);
         });
@@ -349,10 +388,11 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<string, class-string> $events
      */
-    private static function delete(string $model, array $constraints): RouteInstance
+    private static function delete(string $model, array $constraints, array $events): RouteInstance
     {
-        return Route::delete('/{resourceId}', function (Request $request) use ($model, $constraints) {
+        return Route::delete('/{resourceId}', function (Request $request) use ($model, $constraints, $events) {
             $resourceId = self::routeId($request, 'resourceId');
             $query = $model::query();
 
@@ -367,7 +407,12 @@ readonly class ModelResource
             if ($record === null) {
                 throw new ResourceNotFoundException($resourceId);
             }
+
+            Event::dispatch(new $events['deleting']($record));
+
             $record->delete();
+
+            Event::dispatch(new $events['deleted']($resourceId));
 
             return response(status: Response::HTTP_NO_CONTENT);
         });

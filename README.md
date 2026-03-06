@@ -294,6 +294,8 @@ Enum values are automatically included in the schema:
 
 Register extra endpoints on a resource with `actions`. Use `ResourceAction::{method}()` — paths containing `{id}` are item-level (the record is resolved and injected automatically); all other paths are collection-level.
 
+The `action` must be an **invokable class** (a class with `__invoke`). Laravel's IoC container resolves and calls it, so any type-hinted dependencies are injected automatically.
+
 ```php
 use Tcds\Io\Prince\ResourceAction;
 
@@ -311,7 +313,7 @@ ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
             // Collection-level — POST /invoices/import
             ResourceAction::post(
                 path: '/import',
-                action: fn(Request $request) => ImportInvoicesAction::run($request),
+                action: ImportInvoicesAction::class,
                 permission: 'invoices:write',
             ),
 
@@ -319,11 +321,11 @@ ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
             // The matching Invoice is resolved and injected; returns 404 if not found.
             ResourceAction::post(
                 path: '/{id}/send',
-                action: fn(Invoice $invoice) => SendInvoiceAction::run($invoice),
+                action: SendInvoiceAction::class,
                 permission: 'invoices:send',
             ),
 
-            // Invokable controller — GET /invoices/{id}/pdf
+            // GET /invoices/{id}/pdf
             ResourceAction::get(
                 path: '/{id}/pdf',
                 action: InvoicePdfController::class,
@@ -337,6 +339,72 @@ ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
 **Collection actions** (`/import`) are registered before `/{id}` routes so literal path segments are never captured as record IDs.
 
 **Item actions** (`/{id}/send`) resolve the record from the database before calling the action. The model instance is injected by type — any parameter type-hinted with the model class receives it. The full Laravel IoC is available for additional injectables (`Request`, services, etc.). `permission` is optional; omit it to allow unauthenticated access to that action.
+
+---
+
+## Events
+
+Every CRUD operation fires a lifecycle event before and after the DB write. Register listeners via standard Laravel event dispatching — no extra configuration needed.
+
+| Event | When | Signature |
+|---|---|---|
+| `ResourceCreating` | before insert | `(class-string $modelName, array $data)` |
+| `ResourceCreated` | after insert | `(Model $model)` |
+| `ResourceUpdating` | before update | `(Model $model, array $data)` |
+| `ResourceUpdated` | after update | `(Model $model)` |
+| `ResourceDeleting` | before delete | `(Model $model)` |
+| `ResourceDeleted` | after delete | `(int\|string $modelId)` |
+
+```php
+use Tcds\Io\Prince\Events\ResourceCreated;
+use Tcds\Io\Prince\Events\ResourceCreating;
+
+// Side effect — send notification after create
+Event::listen(ResourceCreated::class, function (ResourceCreated $event): void {
+    if ($event->model instanceof Invoice) {
+        Notification::send($event->model->user, new InvoiceCreatedNotification($event->model));
+    }
+});
+
+// Data mutation — slugify title before save
+Event::listen(ResourceCreating::class, function (ResourceCreating $event): void {
+    if (isset($event->data['title'])) {
+        $event->data['slug'] = Str::slug($event->data['title']);
+    }
+});
+```
+
+`ResourceCreating` and `ResourceUpdating` implement `MutableDataEvent` — any changes to `$event->data` are applied to the actual DB write.
+
+### Overriding default events
+
+Override any event per resource by passing an `events` array keyed by lifecycle name. Unspecified keys keep their defaults:
+
+```php
+use Tcds\Io\Prince\Events\ResourceCreating;
+
+ModelResource::of(
+    model: Invoice::class,
+    events: [
+        'creating' => InvoiceCreating::class, // replaces ResourceCreating
+        'created'  => InvoiceCreated::class,  // replaces ResourceCreated
+    ],
+);
+```
+
+The custom event must expose a public mutable `$data` property to participate in data mutation:
+
+```php
+use Tcds\Io\Prince\Events\MutableDataEvent;
+
+class InvoiceCreating implements MutableDataEvent
+{
+    public function __construct(
+        public readonly string $modelName,
+        public array $data,
+    ) {}
+}
+```
 
 ---
 
