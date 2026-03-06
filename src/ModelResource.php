@@ -170,7 +170,7 @@ readonly class ModelResource
             /** @var list<array<string, mixed>> $rawData */
             $rawData = $paginate['data'];
             $data = array_map(
-                fn(array $item) => [...$item, '_resource' => $basePath . '/' . (is_numeric($item['id']) ? (int) $item['id'] : 0)],
+                fn(array $item) => [...$item, '_resource' => $basePath . '/' . $item['id']],
                 $rawData,
             );
 
@@ -212,14 +212,14 @@ readonly class ModelResource
     private static function get(string $model, array $schema, array $constraints, array $nestedEntries): RouteInstance
     {
         return Route::get('/{resourceId}', function (Request $request) use ($model, $schema, $constraints, $nestedEntries) {
-            $resourceId = self::routeInt($request, 'resourceId');
+            $resourceId = self::routeId($request, 'resourceId');
             $query = $model::query()->withoutEagerLoads();
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                 if (!in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
-                $query->where($fk, self::routeInt($request, $param));
+                $query->where($fk, self::routeId($request, $param));
             }
 
             $record = $query->find($resourceId);
@@ -240,7 +240,7 @@ readonly class ModelResource
 
                 $nestedBasePath = $basePath . '/' . $routePrefix;
                 $data[$routePrefix] = array_map(
-                    fn(array $item) => [...$item, '_resource' => $nestedBasePath . '/' . (is_numeric($item['id']) ? (int) $item['id'] : 0)],
+                    fn(array $item) => [...$item, '_resource' => $nestedBasePath . '/' . $item['id']],
                     $nestedItems,
                 );
             }
@@ -270,7 +270,7 @@ readonly class ModelResource
                 if (!in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
-                $parentId = self::routeInt($request, $param);
+                $parentId = self::routeId($request, $param);
                 ModelResourceQuery::findOrThrow($parentModel, $parentId);
                 $data[$fk] = $parentId;
             }
@@ -299,7 +299,7 @@ readonly class ModelResource
     private static function update(string $model, array $schema, array $constraints): RouteInstance
     {
         return Route::patch('/{resourceId}', function (Request $request) use ($model, $schema, $constraints) {
-            $resourceId = self::routeInt($request, 'resourceId');
+            $resourceId = self::routeId($request, 'resourceId');
             $query = $model::query();
             $foreignKeys = [];
 
@@ -307,7 +307,7 @@ readonly class ModelResource
                 if (!in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
-                $query->where($fk, self::routeInt($request, $param));
+                $query->where($fk, self::routeId($request, $param));
                 $foreignKeys[] = $fk;
             }
 
@@ -316,7 +316,7 @@ readonly class ModelResource
                 throw new ResourceNotFoundException($resourceId);
             }
 
-            $data = array_filter(self::data($schema, $request));
+            $data = array_filter(self::data($schema, $request), fn(string $key) => $request->has($key), ARRAY_FILTER_USE_KEY);
 
             foreach ($foreignKeys as $fk) {
                 unset($data[$fk]);
@@ -335,14 +335,14 @@ readonly class ModelResource
     private static function delete(string $model, array $constraints): RouteInstance
     {
         return Route::delete('/{resourceId}', function (Request $request) use ($model, $constraints) {
-            $resourceId = self::routeInt($request, 'resourceId');
+            $resourceId = self::routeId($request, 'resourceId');
             $query = $model::query();
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                 if (!in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
-                $query->where($fk, self::routeInt($request, $param));
+                $query->where($fk, self::routeId($request, $param));
             }
 
             $record = $query->find($resourceId);
@@ -471,12 +471,18 @@ readonly class ModelResource
     }
 
     /**
-     * Safely extracts an integer route parameter, returning 0 if absent or non-string.
+     * Extracts a route parameter as int or string.
+     * Returns an int for numeric values (e.g. auto-increment IDs) and a string otherwise
+     * (e.g. UUIDs). Falls back to 0 only when the parameter is absent — which indicates a
+     * routing misconfiguration rather than a normal request.
      */
-    private static function routeInt(Request $request, string $param): int
+    private static function routeId(Request $request, string $param): int|string
     {
         $value = $request->route($param);
+        if (!is_string($value)) {
+            return 0;
+        }
 
-        return is_string($value) ? (int) $value : 0;
+        return is_numeric($value) ? (int) $value : $value;
     }
 }

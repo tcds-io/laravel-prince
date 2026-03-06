@@ -11,10 +11,15 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 readonly class ResourceMiddleware
 {
+    private string $key;
+
     /**
      * @param Closure(): list<string> $userPermissions
      */
-    private function __construct(private string $action, private Closure $userPermissions) {}
+    private function __construct(private string $action, private Closure $userPermissions)
+    {
+        $this->key = 'prince_middleware_' . uniqid('', true);
+    }
 
     /**
      * @param Closure(): list<string> $userPermissions
@@ -26,10 +31,9 @@ readonly class ResourceMiddleware
 
     public function __toString(): string
     {
-        $key = 'laravel_model_api_middleware_' . spl_object_id($this);
-        app()->instance($key, $this);
+        app()->instance($this->key, $this);
 
-        return $key;
+        return $this->key;
     }
 
     /**

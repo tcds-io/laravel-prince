@@ -92,18 +92,19 @@ readonly class ModelResourceGlobalSearch
                 $caseWhen = 'CASE';
 
                 foreach ($columns as ['name' => $name, 'operator' => $op]) {
-                    $caseWhen .= " WHEN `{$name}` {$op} ? THEN `{$name}`";
+                    $qi = self::quoteIdentifier($name);
+                    $caseWhen .= " WHEN {$qi} {$op} ? THEN {$qi}";
                 }
 
                 $caseWhen .= ' END';
 
                 $where = implode(' OR ', array_map(
-                    fn(array $col) => "`{$col['name']}` {$col['operator']} ?",
+                    fn(array $col) => self::quoteIdentifier($col['name']) . " {$col['operator']} ?",
                     $columns,
                 ));
 
-                $unions[] = "SELECT id, {$caseWhen} AS description, '{$table}' AS resource, {$linkExpr} AS link"
-                    . " FROM `{$table}` WHERE {$where}";
+                $unions[] = "SELECT " . self::quoteIdentifier('id') . ", {$caseWhen} AS description, '{$table}' AS resource, {$linkExpr} AS link"
+                    . " FROM " . self::quoteIdentifier($table) . " WHERE {$where}";
 
                 foreach ($columns as ['value' => $val]) {
                     $bindings[] = $val; // for CASE
@@ -130,11 +131,21 @@ readonly class ModelResourceGlobalSearch
      */
     private static function linkSql(string $routePrefix): string
     {
-        $driver = DB::connection()->getDriverName();
-
-        return match ($driver) {
+        return match (DB::connection()->getDriverName()) {
             'sqlite' => "'/{$routePrefix}/' || CAST(id AS TEXT)",
             default => "CONCAT('/{$routePrefix}/', id)",
+        };
+    }
+
+    /**
+     * Quotes an identifier (table or column name) using the correct style for the active DB driver.
+     * MySQL/SQLite use backticks; PostgreSQL uses double-quotes.
+     */
+    private static function quoteIdentifier(string $name): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'pgsql' => '"' . str_replace('"', '""', $name) . '"',
+            default => '`' . str_replace('`', '``', $name) . '`',
         };
     }
 }
