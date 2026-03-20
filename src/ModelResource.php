@@ -290,10 +290,18 @@ readonly class ModelResource
 
             // Build navigational links for every nested resource regardless of embed setting.
             // Keys use the singular embedKey; paths use the plural routePrefix.
-            /** @var array<string, string> $resourceLinks */
+            // For belongsTo the FK value is known from the parent record, so the full path is included.
+            /** @var array<string, string|null> $resourceLinks */
             $resourceLinks = [];
             foreach ($nestedEntries as $entry) {
-                $resourceLinks[$entry['embedKey']] = $basePath . '/' . $entry['routePrefix'];
+                if ($entry['belongsTo']) {
+                    $fkValue = $data[$entry['foreignKey']] ?? null;
+                    $resourceLinks[$entry['embedKey']] = $fkValue !== null
+                        ? $basePath . '/' . $entry['routePrefix'] . '/' . (is_scalar($fkValue) ? (string) $fkValue : '')
+                        : null;
+                } else {
+                    $resourceLinks[$entry['embedKey']] = $basePath . '/' . $entry['routePrefix'];
+                }
             }
 
             foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'embedKey' => $embedKey, 'model' => $nestedModel, 'foreignKey' => $foreignKey, 'belongsTo' => $isBelongsTo, 'embed' => $shouldEmbed]) {

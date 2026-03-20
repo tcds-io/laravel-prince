@@ -109,6 +109,41 @@ class ModelResourceGetInnerSingleTest extends TestCase
     }
 
     #[Test]
+    public function meta_resources_includes_full_path_with_fk_id(): void
+    {
+        $company = TestBelongsToCompany::create(['name' => 'Acme']);
+        $user = TestBelongsToUser::create(['name' => 'Alice', 'company_id' => $company->id]);
+
+        $response = $this->getJson("/users/{$user->id}");
+
+        $response->assertOk();
+        $response->assertJson([
+            'meta' => [
+                'resources' => [
+                    'company' => "/users/{$user->id}/companies/{$company->id}",
+                ],
+            ],
+        ]);
+    }
+
+    #[Test]
+    public function meta_resources_link_is_null_when_foreign_key_is_null(): void
+    {
+        $user = TestBelongsToUser::create(['name' => 'Bob', 'company_id' => null]);
+
+        $response = $this->getJson("/users/{$user->id}");
+
+        $response->assertOk();
+        $response->assertJson([
+            'meta' => [
+                'resources' => [
+                    'company' => null,
+                ],
+            ],
+        ]);
+    }
+
+    #[Test]
     public function belongs_to_does_not_register_nested_list_route(): void
     {
         $company = TestBelongsToCompany::create(['name' => 'Acme']);
