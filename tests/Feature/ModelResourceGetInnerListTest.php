@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Test\Tcds\Io\Prince\Feature;
 
 use PHPUnit\Framework\Attributes\Test;
+use Tcds\Io\Prince\ModelResource;
 
 /**
  * Verifies that GET /{resource}/{id} embeds registered sub-resources as inner lists
@@ -12,6 +13,13 @@ use PHPUnit\Framework\Attributes\Test;
  */
 class ModelResourceGetInnerListTest extends ModelResourceNestedTestCase
 {
+    protected function registerRoutes(): void
+    {
+        ModelResource::of(TestInvoice::class, resources: [
+            ModelResource::of(TestItem::class, embed: true),
+        ])->routes();
+    }
+
     #[Test]
     public function get_embeds_nested_resource_records_in_data(): void
     {
