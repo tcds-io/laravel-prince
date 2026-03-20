@@ -143,7 +143,7 @@ readonly class ModelResource
         // Collect nested resource info in one pass: used both for the GET inner lists
         // and for registering nested route groups below.
         // PHP allows accessing private members of other instances of the same class.
-        /** @var list<array{routePrefix: string, model: class-string<Model>, foreignKey: string, belongsTo: bool, embed: bool}> $nestedEntries */
+        /** @var list<array{routePrefix: string, embedKey: string, model: class-string<Model>, foreignKey: string, belongsTo: bool, embed: bool}> $nestedEntries */
         $nestedEntries = [];
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
@@ -156,7 +156,8 @@ readonly class ModelResource
             }
 
             $nestedEntries[] = [
-                'routePrefix' => $nestedResource->belongsTo ? Str::singular($nestedResource->routePrefix()) : $nestedResource->routePrefix(),
+                'routePrefix' => $nestedResource->routePrefix(),
+                'embedKey' => $nestedResource->belongsTo ? Str::singular($nestedResource->routePrefix()) : $nestedResource->routePrefix(),
                 'model' => $nestedResource->model,
                 'foreignKey' => $column,
                 'belongsTo' => $nestedResource->belongsTo,
@@ -264,7 +265,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
-     * @param list<array{routePrefix: string, model: class-string<Model>, foreignKey: string}> $nestedEntries
+     * @param list<array{routePrefix: string, embedKey: string, model: class-string<Model>, foreignKey: string, belongsTo: bool, embed: bool}> $nestedEntries
      */
     private static function get(string $model, array $constraints, array $nestedEntries): RouteInstance
     {
@@ -288,13 +289,14 @@ readonly class ModelResource
             $data = $record->toArray();
 
             // Build navigational links for every nested resource regardless of embed setting.
+            // Keys use the singular embedKey; paths use the plural routePrefix.
             /** @var array<string, string> $resourceLinks */
             $resourceLinks = [];
             foreach ($nestedEntries as $entry) {
-                $resourceLinks[$entry['routePrefix']] = $basePath . '/' . $entry['routePrefix'];
+                $resourceLinks[$entry['embedKey']] = $basePath . '/' . $entry['routePrefix'];
             }
 
-            foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'model' => $nestedModel, 'foreignKey' => $foreignKey, 'belongsTo' => $isBelongsTo, 'embed' => $shouldEmbed]) {
+            foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'embedKey' => $embedKey, 'model' => $nestedModel, 'foreignKey' => $foreignKey, 'belongsTo' => $isBelongsTo, 'embed' => $shouldEmbed]) {
                 if (!$shouldEmbed) {
                     continue;
                 }
@@ -308,7 +310,7 @@ readonly class ModelResource
                     $nestedItem = $fkValue !== null
                         ? $nestedModel::query()->withoutEagerLoads()->find($fkValue)?->toArray()
                         : null;
-                    $data[$routePrefix] = $nestedItem !== null
+                    $data[$embedKey] = $nestedItem !== null
                         ? [...$nestedItem, '_resource' => $nestedBasePath . '/' . (string) $nestedItem['id']]
                         : null;
                 } else {
@@ -319,7 +321,7 @@ readonly class ModelResource
                         ->get()
                         ->toArray();
 
-                    $data[$routePrefix] = array_map(
+                    $data[$embedKey] = array_map(
                         fn(array $item) => [...$item, '_resource' => $nestedBasePath . '/' . (string) $item['id']],
                         $nestedItems,
                     );
