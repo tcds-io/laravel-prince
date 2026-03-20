@@ -154,7 +154,7 @@ readonly class ModelResource
             }
 
             $nestedEntries[] = [
-                'routePrefix' => $nestedResource->routePrefix(),
+                'routePrefix' => $nestedResource->belongsTo ? Str::singular($nestedResource->routePrefix()) : $nestedResource->routePrefix(),
                 'model' => $nestedResource->model,
                 'foreignKey' => $column,
                 'belongsTo' => $nestedResource->belongsTo,
