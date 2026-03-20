@@ -51,6 +51,9 @@ readonly class ModelResourceQuery
                     if ($operator === 'between') {
                         /** @var array<int, mixed> $value */
                         $q->orWhereBetween($column->name, $value);
+                    } elseif ($operator === 'in') {
+                        /** @var list<mixed> $value */
+                        $q->orWhereIn($column->name, $value);
                     } else {
                         $q->orWhere($column->name, $operator, $value);
                     }
@@ -68,6 +71,9 @@ readonly class ModelResourceQuery
             if ($operator === 'between') {
                 /** @var array<int, mixed> $value */
                 $query->whereBetween($column->name, $value);
+            } elseif ($operator === 'in') {
+                /** @var list<mixed> $value */
+                $query->whereIn($column->name, $value);
             } else {
                 $query->where($column->name, $operator, $value);
             }
@@ -113,6 +119,13 @@ readonly class ModelResourceQuery
                 throw new BadRequestHttpException("Invalid value for column `{$column->name}`");
             }
         };
+
+        // Multi-value: ?field=a,b,c → WHERE field IN (a, b, c)
+        if (str_contains($raw, ',') && !str_contains($raw, '%') && !preg_match('/^[<>]=?/', $raw)) {
+            $values = array_map(fn(string $v) => $parse(trim($v)), explode(',', $raw));
+
+            return ['in', $values];
+        }
 
         if ($isNumericOrDatetime) {
             if (str_contains($raw, '%')) {

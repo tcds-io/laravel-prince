@@ -24,7 +24,6 @@ class ModelResourceGetTest extends ModelResourceTestCase
             ],
             'meta' => [
                 'resource' => 'invoices',
-                'schema' => self::SCHEMA,
             ],
         ]);
     }

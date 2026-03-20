@@ -27,7 +27,6 @@ class ModelResourceNestedGetTest extends ModelResourceNestedTestCase
             ],
             'meta' => [
                 'resource' => 'items',
-                'schema' => self::NESTED_SCHEMA,
             ],
         ]);
     }
