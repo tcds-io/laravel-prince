@@ -191,7 +191,58 @@ readonly class ModelResource
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
             if ($nestedResource->belongsTo) {
-                continue; // belongs-to: no nested routes; the related model has its own top-level resource
+                // FK lives on the parent; register a scoped GET /{parentId}/{prefix}/{nestedId} route.
+                $column = is_int($foreignKey) ? Str::singular($nestedResource->routePrefix()) . '_id' : $foreignKey;
+                $parentParam = Str::singular($table) . 'Id';
+                $nestedParam = Str::singular($nestedResource->routePrefix()) . 'Id';
+                $parentModel = $this->model;
+                $parentRequiredPermission = $this->resourcePermissions['get'];
+                $parentUserPermissions = $this->userPermissions;
+
+                Route::get(
+                    '{' . $parentParam . '}/' . $nestedResource->routePrefix() . '/{' . $nestedParam . '}',
+                    function (Request $request) use ($nestedResource, $column, $parentParam, $nestedParam, $constraints, $parentModel, $parentRequiredPermission, $parentUserPermissions) {
+                        // Check outer constraints (grandparent permissions, etc.).
+                        foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                            if (!in_array($required, ($perms)())) {
+                                throw new AccessDeniedHttpException();
+                            }
+                        }
+
+                        // Check parent's own get permission.
+                        if (!in_array($parentRequiredPermission, ($parentUserPermissions)())) {
+                            throw new AccessDeniedHttpException();
+                        }
+
+                        $parentId = self::routeId($request, $parentParam);
+                        $nestedId = self::routeId($request, $nestedParam);
+
+                        // Validate parent exists.
+                        $parent = $parentModel::query()->withoutEagerLoads()->find($parentId);
+                        if ($parent === null) {
+                            throw new ResourceNotFoundException($parentId);
+                        }
+
+                        // Validate the parent's FK points to the requested nested resource.
+                        $fkValue = $parent->{$column} ?? null;
+                        if (!is_scalar($fkValue) || (string) $fkValue !== (string) $nestedId) {
+                            throw new ResourceNotFoundException($nestedId);
+                        }
+
+                        $nested = $nestedResource->model::query()->withoutEagerLoads()->find($nestedId);
+                        if ($nested === null) {
+                            throw new ResourceNotFoundException($nestedId);
+                        }
+
+                        $basePath = $request->getPathInfo();
+
+                        return response()->json([
+                            'data' => [...$nested->toArray(), '_resource' => $basePath],
+                        ]);
+                    }
+                )->middleware((string) ResourceMiddleware::of($nestedResource->resourcePermissions['get'], $nestedResource->userPermissions));
+
+                continue;
             }
 
             if (is_int($foreignKey)) {

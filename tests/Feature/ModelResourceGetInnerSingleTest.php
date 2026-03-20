@@ -144,6 +144,36 @@ class ModelResourceGetInnerSingleTest extends TestCase
     }
 
     #[Test]
+    public function belongs_to_get_route_returns_the_nested_resource(): void
+    {
+        $company = TestBelongsToCompany::create(['name' => 'Acme']);
+        $user = TestBelongsToUser::create(['name' => 'Alice', 'company_id' => $company->id]);
+
+        $response = $this->getJson("/users/{$user->id}/companies/{$company->id}");
+
+        $response->assertOk();
+        $response->assertJson([
+            'data' => [
+                'id' => $company->id,
+                'name' => 'Acme',
+                '_resource' => "/users/{$user->id}/companies/{$company->id}",
+            ],
+        ]);
+    }
+
+    #[Test]
+    public function belongs_to_get_route_returns_404_when_fk_does_not_match(): void
+    {
+        $companyA = TestBelongsToCompany::create(['name' => 'Acme']);
+        $companyB = TestBelongsToCompany::create(['name' => 'Other']);
+        $user = TestBelongsToUser::create(['name' => 'Alice', 'company_id' => $companyA->id]);
+
+        $response = $this->getJson("/users/{$user->id}/companies/{$companyB->id}");
+
+        $response->assertNotFound();
+    }
+
+    #[Test]
     public function belongs_to_does_not_register_nested_list_route(): void
     {
         $company = TestBelongsToCompany::create(['name' => 'Acme']);
