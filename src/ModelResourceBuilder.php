@@ -77,6 +77,84 @@ final class ModelResourceBuilder
         array $actions = [],
         array $events = [],
     ): self {
+        return $this->addResource(model: $model, resources: $resources, globalSearch: $globalSearch, segment: $segment, foreignKey: $foreignKey, resourcePermissions: $resourcePermissions, actions: $actions, events: $events);
+    }
+
+    /**
+     * Registers a has-many nested resource (FK on the child model, embeds as an array).
+     * Use inside a $resources callback. Equivalent to resource() with explicit has-many semantics.
+     *
+     * @param class-string<Model> $model
+     * @param string|null $foreignKey FK column on the child model (defaults to {singular_parent_table}_id)
+     * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions
+     * @param list<ResourceAction> $actions
+     * @param array<string, class-string> $events
+     */
+    public function hasMany(
+        string $model,
+        ?string $foreignKey = null,
+        ?string $segment = null,
+        array $resourcePermissions = [
+            'list' => 'default-model:list',
+            'get' => 'default-model:get',
+            'create' => 'default-model:create',
+            'update' => 'default-model:update',
+            'delete' => 'default-model:delete',
+        ],
+        array $actions = [],
+        array $events = [],
+    ): self {
+        return $this->addResource(model: $model, segment: $segment, foreignKey: $foreignKey, resourcePermissions: $resourcePermissions, actions: $actions, events: $events, belongsTo: false);
+    }
+
+    /**
+     * Registers a belongs-to nested resource (FK on the parent model, embeds as a single object or null).
+     * Use inside a $resources callback. No nested CRUD routes are registered — the related model
+     * is accessible via its own top-level resource.
+     *
+     * @param class-string<Model> $model
+     * @param string|null $column Column on the parent model holding the FK (defaults to {singular_related_table}_id)
+     * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions
+     */
+    public function belongsTo(
+        string $model,
+        ?string $column = null,
+        ?string $segment = null,
+        array $resourcePermissions = [
+            'list' => 'default-model:list',
+            'get' => 'default-model:get',
+            'create' => 'default-model:create',
+            'update' => 'default-model:update',
+            'delete' => 'default-model:delete',
+        ],
+    ): self {
+        return $this->addResource(model: $model, segment: $segment, foreignKey: $column, resourcePermissions: $resourcePermissions, belongsTo: true);
+    }
+
+    /**
+     * @param class-string<Model> $model
+     * @param (Closure(self): void)|null $resources
+     * @param array{list: string, get: string, create: string, update: string, delete: string} $resourcePermissions
+     * @param list<ResourceAction> $actions
+     * @param array<string, class-string> $events
+     */
+    private function addResource(
+        string $model,
+        ?Closure $resources = null,
+        bool $globalSearch = false,
+        ?string $segment = null,
+        ?string $foreignKey = null,
+        array $resourcePermissions = [
+            'list' => 'default-model:list',
+            'get' => 'default-model:get',
+            'create' => 'default-model:create',
+            'update' => 'default-model:update',
+            'delete' => 'default-model:delete',
+        ],
+        array $actions = [],
+        array $events = [],
+        bool $belongsTo = false,
+    ): self {
         $nestedBuilder = new self($this->userPermissions);
 
         if ($resources !== null) {
@@ -101,6 +179,7 @@ final class ModelResourceBuilder
             resources: $nestedResources,
             segment: $segment,
             globalSearch: $globalSearch,
+            belongsTo: $belongsTo,
             actions: $actions,
             events: $events,
         );

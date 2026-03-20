@@ -45,6 +45,7 @@ readonly class ModelResource
         private array $resources,
         private ?string $segment,
         public bool $globalSearch = false,
+        public bool $belongsTo = false,
         private array $actions = [],
         private array $events = [],
     ) {}
@@ -74,6 +75,7 @@ readonly class ModelResource
         array $resources = [],
         ?string $segment = null,
         bool $globalSearch = false,
+        bool $belongsTo = false,
         array $actions = [],
         array $events = [],
     ): self {
@@ -92,7 +94,7 @@ readonly class ModelResource
             'deleted'  => ResourceDeleted::class,
         ], $events);
 
-        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $actions, $resolvedEvents);
+        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $belongsTo, $actions, $resolvedEvents);
     }
 
     /**
@@ -139,14 +141,23 @@ readonly class ModelResource
         // Collect nested resource info in one pass: used both for the GET inner lists
         // and for registering nested route groups below.
         // PHP allows accessing private members of other instances of the same class.
-        /** @var list<array{routePrefix: string, model: class-string<Model>, foreignKey: string}> $nestedEntries */
+        /** @var list<array{routePrefix: string, model: class-string<Model>, foreignKey: string, belongsTo: bool}> $nestedEntries */
         $nestedEntries = [];
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
+            if ($nestedResource->belongsTo) {
+                // FK (column) lives on the parent record; infer it from the child's table name.
+                $column = is_int($foreignKey) ? Str::singular($nestedResource->routePrefix()) . '_id' : $foreignKey;
+            } else {
+                // FK lives on the child record; infer it from the parent's table name.
+                $column = is_int($foreignKey) ? Str::singular($table) . '_id' : $foreignKey;
+            }
+
             $nestedEntries[] = [
                 'routePrefix' => $nestedResource->routePrefix(),
                 'model' => $nestedResource->model,
-                'foreignKey' => is_int($foreignKey) ? Str::singular($table) . '_id' : $foreignKey,
+                'foreignKey' => $column,
+                'belongsTo' => $nestedResource->belongsTo,
             ];
         }
 
@@ -175,6 +186,10 @@ readonly class ModelResource
         }
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
+            if ($nestedResource->belongsTo) {
+                continue; // belongs-to: no nested routes; the related model has its own top-level resource
+            }
+
             if (is_int($foreignKey)) {
                 $foreignKey = Str::singular($table) . '_id';
             }
@@ -269,19 +284,32 @@ readonly class ModelResource
             $basePath = $request->getPathInfo();
             $data = $record->toArray();
 
-            foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'model' => $nestedModel, 'foreignKey' => $foreignKey]) {
-                /** @var list<array{id: int|string, ...}> $nestedItems */
-                $nestedItems = $nestedModel::query()
-                    ->withoutEagerLoads()
-                    ->where($foreignKey, $resourceId)
-                    ->get()
-                    ->toArray();
-
+            foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'model' => $nestedModel, 'foreignKey' => $foreignKey, 'belongsTo' => $isBelongsTo]) {
                 $nestedBasePath = $basePath . '/' . $routePrefix;
-                $data[$routePrefix] = array_map(
-                    fn(array $item) => [...$item, '_resource' => $nestedBasePath . '/' . (string) $item['id']],
-                    $nestedItems,
-                );
+
+                if ($isBelongsTo) {
+                    // FK is on the parent record; resolve the single related object.
+                    $fkValue = $data[$foreignKey] ?? null;
+                    /** @var array{id: int|string, ...}|null $nestedItem */
+                    $nestedItem = $fkValue !== null
+                        ? $nestedModel::query()->withoutEagerLoads()->find($fkValue)?->toArray()
+                        : null;
+                    $data[$routePrefix] = $nestedItem !== null
+                        ? [...$nestedItem, '_resource' => $nestedBasePath . '/' . (string) $nestedItem['id']]
+                        : null;
+                } else {
+                    /** @var list<array{id: int|string, ...}> $nestedItems */
+                    $nestedItems = $nestedModel::query()
+                        ->withoutEagerLoads()
+                        ->where($foreignKey, $resourceId)
+                        ->get()
+                        ->toArray();
+
+                    $data[$routePrefix] = array_map(
+                        fn(array $item) => [...$item, '_resource' => $nestedBasePath . '/' . (string) $item['id']],
+                        $nestedItems,
+                    );
+                }
             }
 
             return response()->json([
