@@ -79,4 +79,29 @@ class ModelResourceListFilterEnumTest extends ModelResourceTestCase
 
         $response->assertBadRequest();
     }
+
+    #[Test]
+    public function enum_multi_value_returns_records_matching_any_of_the_values(): void
+    {
+        TestPayment::create(['amount' => 100, 'currency' => TestCurrency::EUR]);
+        TestPayment::create(['amount' => 150, 'currency' => TestCurrency::EGP]);
+        TestPayment::create(['amount' => 200, 'currency' => TestCurrency::USD]);
+
+        $response = $this->getJson('/payments?currency=EUR,USD');
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+        $response->assertJson(['data' => [['currency' => 'EUR'], ['currency' => 'USD']]]);
+    }
+
+    #[Test]
+    public function enum_multi_value_returns_400_when_any_value_is_unknown(): void
+    {
+        TestPayment::create(['amount' => 100, 'currency' => TestCurrency::EUR]);
+
+        // GBP is invalid — one bad value in the list should still return 400
+        $response = $this->getJson('/payments?currency=EUR,GBP');
+
+        $response->assertBadRequest();
+    }
 }

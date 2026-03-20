@@ -24,7 +24,6 @@ class ModelResourceListTest extends ModelResourceTestCase
             ],
             'meta' => [
                 'resource' => 'invoices',
-                'schema' => self::SCHEMA,
                 'current_page' => 1,
                 'per_page' => 10,
                 'total' => 2,
@@ -85,12 +84,41 @@ class ModelResourceListTest extends ModelResourceTestCase
             'data' => [],
             'meta' => [
                 'resource' => 'invoices',
-                'schema' => self::SCHEMA,
                 'current_page' => 1,
                 'per_page' => 10,
                 'total' => 0,
                 'last_page' => 1,
+                'prev_page' => null,
+                'next_page' => null,
             ],
         ]);
+    }
+
+    #[Test]
+    public function list_includes_next_page_link_when_more_pages_exist(): void
+    {
+        TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
+        TestInvoice::create(['title' => 'Invoice B', 'amount' => 200.00]);
+        TestInvoice::create(['title' => 'Invoice C', 'amount' => 300.00]);
+
+        $response = $this->getJson('/invoices?limit=2');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.prev_page', null);
+        $this->assertStringContainsString('page=2', $response->json('meta.next_page'));
+    }
+
+    #[Test]
+    public function list_includes_prev_page_link_on_subsequent_pages(): void
+    {
+        TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
+        TestInvoice::create(['title' => 'Invoice B', 'amount' => 200.00]);
+        TestInvoice::create(['title' => 'Invoice C', 'amount' => 300.00]);
+
+        $response = $this->getJson('/invoices?limit=2&page=2');
+
+        $response->assertOk();
+        $this->assertStringContainsString('page=1', $response->json('meta.prev_page'));
+        $response->assertJsonPath('meta.next_page', null);
     }
 }

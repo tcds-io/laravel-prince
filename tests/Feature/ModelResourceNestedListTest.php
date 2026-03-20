@@ -23,7 +23,6 @@ class ModelResourceNestedListTest extends ModelResourceNestedTestCase
             ],
             'meta' => [
                 'resource' => 'items',
-                'schema' => self::NESTED_SCHEMA,
                 'current_page' => 1,
                 'total' => 1,
                 'last_page' => 1,

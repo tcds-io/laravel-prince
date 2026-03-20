@@ -118,6 +118,34 @@ class ModelResourceListFilterTest extends ModelResourceTestCase
     }
 
     #[Test]
+    public function prop_filter_with_comma_separated_values_returns_matching_records(): void
+    {
+        $invoiceA = TestInvoice::create(['title' => 'Invoice Alpha', 'amount' => 100.00]);
+        $invoiceB = TestInvoice::create(['title' => 'Invoice Beta', 'amount' => 200.00]);
+        TestInvoice::create(['title' => 'Invoice Gamma', 'amount' => 300.00]);
+
+        $response = $this->getJson('/invoices?' . http_build_query(['title' => 'Invoice Alpha,Invoice Beta']));
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+        $response->assertJson(['data' => [['id' => $invoiceA->id], ['id' => $invoiceB->id]]]);
+    }
+
+    #[Test]
+    public function prop_filter_with_comma_separated_integers_returns_matching_records(): void
+    {
+        $invoiceA = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
+        $invoiceB = TestInvoice::create(['title' => 'Invoice B', 'amount' => 200.00]);
+        TestInvoice::create(['title' => 'Invoice C', 'amount' => 300.00]);
+
+        $response = $this->getJson('/invoices?amount=100,200');
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+        $response->assertJson(['data' => [['id' => $invoiceA->id], ['id' => $invoiceB->id]]]);
+    }
+
+    #[Test]
     public function search_does_not_apply_to_datetime_columns(): void
     {
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);

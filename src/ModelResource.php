@@ -163,7 +163,7 @@ readonly class ModelResource
         }
 
         self::list($this->model, $table, $schema, $constraints)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['list'], $this->userPermissions));
-        self::get($this->model, $schema, $constraints, $nestedEntries)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['get'], $this->userPermissions));
+        self::get($this->model, $constraints, $nestedEntries)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['get'], $this->userPermissions));
         self::create($this->model, $schema, $constraints, $this->events)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['create'], $this->userPermissions));
         self::update($this->model, $schema, $constraints, $this->events)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['update'], $this->userPermissions));
         self::delete($this->model, $constraints, $this->events)->middleware((string) ResourceMiddleware::of($this->resourcePermissions['delete'], $this->userPermissions));
@@ -217,11 +217,12 @@ readonly class ModelResource
                 'data' => $data,
                 'meta' => [
                     'resource' => $table,
-                    'schema' => $schema,
                     'current_page' => $paginate['current_page'],
                     'total' => $paginate['total'],
                     'last_page' => $paginate['last_page'],
                     'per_page' => $paginate['per_page'],
+                    'prev_page' => $paginate['prev_page_url'],
+                    'next_page' => $paginate['next_page_url'],
                 ],
             ]);
         });
@@ -244,13 +245,12 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
      * @param list<array{routePrefix: string, model: class-string<Model>, foreignKey: string}> $nestedEntries
      */
-    private static function get(string $model, array $schema, array $constraints, array $nestedEntries): RouteInstance
+    private static function get(string $model, array $constraints, array $nestedEntries): RouteInstance
     {
-        return Route::get('/{resourceId}', function (Request $request) use ($model, $schema, $constraints, $nestedEntries) {
+        return Route::get('/{resourceId}', function (Request $request) use ($model, $constraints, $nestedEntries) {
             $resourceId = self::routeId($request, 'resourceId');
             $query = $model::query()->withoutEagerLoads();
 
@@ -288,7 +288,6 @@ readonly class ModelResource
                 'data' => $data,
                 'meta' => [
                     'resource' => $record->getTable(),
-                    'schema' => $schema,
                     'resources' => array_column($nestedEntries, 'routePrefix'),
                 ],
             ]);
