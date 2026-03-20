@@ -66,7 +66,7 @@ class ModelResourceGetInnerSingleTest extends TestCase
             'data' => [
                 'id' => $user->id,
                 'name' => 'Alice',
-                'companies' => [
+                'company' => [
                     'id' => $company->id,
                     'name' => 'Acme',
                 ],
@@ -85,7 +85,7 @@ class ModelResourceGetInnerSingleTest extends TestCase
         $response->assertJson([
             'data' => [
                 'id' => $user->id,
-                'companies' => null,
+                'company' => null,
             ],
         ]);
     }
@@ -101,8 +101,8 @@ class ModelResourceGetInnerSingleTest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'data' => [
-                'companies' => [
-                    '_resource' => "/users/{$user->id}/companies/{$company->id}",
+                'company' => [
+                    '_resource' => "/users/{$user->id}/company/{$company->id}",
                 ],
             ],
         ]);
