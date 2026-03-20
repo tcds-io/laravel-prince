@@ -194,14 +194,14 @@ readonly class ModelResource
                 // FK lives on the parent; register a scoped GET /{parentId}/{prefix}/{nestedId} route.
                 $column = is_int($foreignKey) ? Str::singular($nestedResource->routePrefix()) . '_id' : $foreignKey;
                 $parentParam = Str::singular($table) . 'Id';
-                $nestedParam = Str::singular($nestedResource->routePrefix()) . 'Id';
+                $singularPrefix = Str::singular($nestedResource->routePrefix());
                 $parentModel = $this->model;
                 $parentRequiredPermission = $this->resourcePermissions['get'];
                 $parentUserPermissions = $this->userPermissions;
 
                 Route::get(
-                    '{' . $parentParam . '}/' . $nestedResource->routePrefix() . '/{' . $nestedParam . '}',
-                    function (Request $request) use ($nestedResource, $column, $parentParam, $nestedParam, $constraints, $parentModel, $parentRequiredPermission, $parentUserPermissions) {
+                    '{' . $parentParam . '}/' . $singularPrefix,
+                    function (Request $request) use ($nestedResource, $column, $parentParam, $constraints, $parentModel, $parentRequiredPermission, $parentUserPermissions) {
                         // Check outer constraints (grandparent permissions, etc.).
                         foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                             if (!in_array($required, ($perms)())) {
@@ -215,7 +215,6 @@ readonly class ModelResource
                         }
 
                         $parentId = self::routeId($request, $parentParam);
-                        $nestedId = self::routeId($request, $nestedParam);
 
                         // Validate parent exists.
                         $parent = $parentModel::query()->withoutEagerLoads()->find($parentId);
@@ -223,21 +222,19 @@ readonly class ModelResource
                             throw new ResourceNotFoundException($parentId);
                         }
 
-                        // Validate the parent's FK points to the requested nested resource.
+                        // Resolve the related record via the parent's FK — no ID in the URL.
                         $fkValue = $parent->{$column} ?? null;
-                        if (!is_scalar($fkValue) || (string) $fkValue !== (string) $nestedId) {
-                            throw new ResourceNotFoundException($nestedId);
+                        if (!is_scalar($fkValue)) {
+                            throw new ResourceNotFoundException($parentId);
                         }
 
-                        $nested = $nestedResource->model::query()->withoutEagerLoads()->find($nestedId);
+                        $nested = $nestedResource->model::query()->withoutEagerLoads()->find($fkValue);
                         if ($nested === null) {
-                            throw new ResourceNotFoundException($nestedId);
+                            throw new ResourceNotFoundException((string) $fkValue);
                         }
-
-                        $basePath = $request->getPathInfo();
 
                         return response()->json([
-                            'data' => [...$nested->toArray(), '_resource' => $basePath],
+                            'data' => [...$nested->toArray(), '_resource' => $request->getPathInfo()],
                         ]);
                     }
                 )->middleware((string) ResourceMiddleware::of($nestedResource->resourcePermissions['get'], $nestedResource->userPermissions));
@@ -348,7 +345,7 @@ readonly class ModelResource
                 if ($entry['belongsTo']) {
                     $fkValue = $data[$entry['foreignKey']] ?? null;
                     $resourceLinks[$entry['embedKey']] = $fkValue !== null
-                        ? $basePath . '/' . $entry['routePrefix'] . '/' . (is_scalar($fkValue) ? (string) $fkValue : '')
+                        ? $basePath . '/' . $entry['embedKey']   // singular: /users/1/company
                         : null;
                 } else {
                     $resourceLinks[$entry['embedKey']] = $basePath . '/' . $entry['routePrefix'];
@@ -360,7 +357,7 @@ readonly class ModelResource
                     continue;
                 }
 
-                $nestedBasePath = $basePath . '/' . $routePrefix;
+                $nestedBasePath = $basePath . '/' . ($isBelongsTo ? $embedKey : $routePrefix);
 
                 if ($isBelongsTo) {
                     // FK is on the parent record; resolve the single related object.
@@ -370,7 +367,7 @@ readonly class ModelResource
                         ? $nestedModel::query()->withoutEagerLoads()->find($fkValue)?->toArray()
                         : null;
                     $data[$embedKey] = $nestedItem !== null
-                        ? [...$nestedItem, '_resource' => $nestedBasePath . '/' . (string) $nestedItem['id']]
+                        ? [...$nestedItem, '_resource' => $nestedBasePath]
                         : null;
                 } else {
                     /** @var list<array{id: int|string, ...}> $nestedItems */

@@ -102,14 +102,14 @@ class ModelResourceGetInnerSingleTest extends TestCase
         $response->assertJson([
             'data' => [
                 'company' => [
-                    '_resource' => "/users/{$user->id}/companies/{$company->id}",
+                    '_resource' => "/users/{$user->id}/company",
                 ],
             ],
         ]);
     }
 
     #[Test]
-    public function meta_resources_includes_full_path_with_fk_id(): void
+    public function meta_resources_includes_singleton_path(): void
     {
         $company = TestBelongsToCompany::create(['name' => 'Acme']);
         $user = TestBelongsToUser::create(['name' => 'Alice', 'company_id' => $company->id]);
@@ -120,7 +120,7 @@ class ModelResourceGetInnerSingleTest extends TestCase
         $response->assertJson([
             'meta' => [
                 'resources' => [
-                    'company' => "/users/{$user->id}/companies/{$company->id}",
+                    'company' => "/users/{$user->id}/company",
                 ],
             ],
         ]);
@@ -149,26 +149,32 @@ class ModelResourceGetInnerSingleTest extends TestCase
         $company = TestBelongsToCompany::create(['name' => 'Acme']);
         $user = TestBelongsToUser::create(['name' => 'Alice', 'company_id' => $company->id]);
 
-        $response = $this->getJson("/users/{$user->id}/companies/{$company->id}");
+        $response = $this->getJson("/users/{$user->id}/company");
 
         $response->assertOk();
         $response->assertJson([
             'data' => [
                 'id' => $company->id,
                 'name' => 'Acme',
-                '_resource' => "/users/{$user->id}/companies/{$company->id}",
+                '_resource' => "/users/{$user->id}/company",
             ],
         ]);
     }
 
     #[Test]
-    public function belongs_to_get_route_returns_404_when_fk_does_not_match(): void
+    public function belongs_to_get_route_returns_404_when_parent_not_found(): void
     {
-        $companyA = TestBelongsToCompany::create(['name' => 'Acme']);
-        $companyB = TestBelongsToCompany::create(['name' => 'Other']);
-        $user = TestBelongsToUser::create(['name' => 'Alice', 'company_id' => $companyA->id]);
+        $response = $this->getJson('/users/999/company');
 
-        $response = $this->getJson("/users/{$user->id}/companies/{$companyB->id}");
+        $response->assertNotFound();
+    }
+
+    #[Test]
+    public function belongs_to_get_route_returns_404_when_fk_is_null(): void
+    {
+        $user = TestBelongsToUser::create(['name' => 'Bob', 'company_id' => null]);
+
+        $response = $this->getJson("/users/{$user->id}/company");
 
         $response->assertNotFound();
     }
