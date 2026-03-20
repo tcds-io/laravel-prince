@@ -46,6 +46,7 @@ readonly class ModelResource
         private ?string $segment,
         public bool $globalSearch = false,
         public bool $belongsTo = false,
+        public bool $embed = false,
         private array $actions = [],
         private array $events = [],
     ) {}
@@ -76,6 +77,7 @@ readonly class ModelResource
         ?string $segment = null,
         bool $globalSearch = false,
         bool $belongsTo = false,
+        bool $embed = false,
         array $actions = [],
         array $events = [],
     ): self {
@@ -94,7 +96,7 @@ readonly class ModelResource
             'deleted'  => ResourceDeleted::class,
         ], $events);
 
-        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $belongsTo, $actions, $resolvedEvents);
+        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $belongsTo, $embed, $actions, $resolvedEvents);
     }
 
     /**
@@ -141,7 +143,7 @@ readonly class ModelResource
         // Collect nested resource info in one pass: used both for the GET inner lists
         // and for registering nested route groups below.
         // PHP allows accessing private members of other instances of the same class.
-        /** @var list<array{routePrefix: string, model: class-string<Model>, foreignKey: string, belongsTo: bool}> $nestedEntries */
+        /** @var list<array{routePrefix: string, model: class-string<Model>, foreignKey: string, belongsTo: bool, embed: bool}> $nestedEntries */
         $nestedEntries = [];
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
@@ -158,6 +160,7 @@ readonly class ModelResource
                 'model' => $nestedResource->model,
                 'foreignKey' => $column,
                 'belongsTo' => $nestedResource->belongsTo,
+                'embed' => $nestedResource->embed,
             ];
         }
 
@@ -284,7 +287,18 @@ readonly class ModelResource
             $basePath = $request->getPathInfo();
             $data = $record->toArray();
 
-            foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'model' => $nestedModel, 'foreignKey' => $foreignKey, 'belongsTo' => $isBelongsTo]) {
+            // Build navigational links for every nested resource regardless of embed setting.
+            /** @var array<string, string> $resourceLinks */
+            $resourceLinks = [];
+            foreach ($nestedEntries as $entry) {
+                $resourceLinks[$entry['routePrefix']] = $basePath . '/' . $entry['routePrefix'];
+            }
+
+            foreach ($nestedEntries as ['routePrefix' => $routePrefix, 'model' => $nestedModel, 'foreignKey' => $foreignKey, 'belongsTo' => $isBelongsTo, 'embed' => $shouldEmbed]) {
+                if (!$shouldEmbed) {
+                    continue;
+                }
+
                 $nestedBasePath = $basePath . '/' . $routePrefix;
 
                 if ($isBelongsTo) {
@@ -316,7 +330,7 @@ readonly class ModelResource
                 'data' => $data,
                 'meta' => [
                     'resource' => $record->getTable(),
-                    'resources' => array_column($nestedEntries, 'routePrefix'),
+                    'resources' => $resourceLinks,
                 ],
             ]);
         });

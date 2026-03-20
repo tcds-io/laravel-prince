@@ -47,7 +47,9 @@ class ModelResourceNestedSchemaTest extends ModelResourceNestedTestCase
         $response->assertJson([
             'meta' => [
                 'resource' => 'invoices',
-                'resources' => ['items'],
+                'resources' => [
+                    'items' => "/invoices/{$invoice->id}/items",
+                ],
             ],
         ]);
     }

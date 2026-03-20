@@ -94,6 +94,7 @@ final class ModelResourceBuilder
         string $model,
         ?string $foreignKey = null,
         ?string $segment = null,
+        bool $embed = false,
         array $resourcePermissions = [
             'list' => 'default-model:list',
             'get' => 'default-model:get',
@@ -104,7 +105,7 @@ final class ModelResourceBuilder
         array $actions = [],
         array $events = [],
     ): self {
-        return $this->addResource(model: $model, segment: $segment, foreignKey: $foreignKey, resourcePermissions: $resourcePermissions, actions: $actions, events: $events, belongsTo: false);
+        return $this->addResource(model: $model, segment: $segment, foreignKey: $foreignKey, embed: $embed, resourcePermissions: $resourcePermissions, actions: $actions, events: $events, belongsTo: false);
     }
 
     /**
@@ -120,6 +121,7 @@ final class ModelResourceBuilder
         string $model,
         ?string $column = null,
         ?string $segment = null,
+        bool $embed = false,
         array $resourcePermissions = [
             'list' => 'default-model:list',
             'get' => 'default-model:get',
@@ -128,7 +130,7 @@ final class ModelResourceBuilder
             'delete' => 'default-model:delete',
         ],
     ): self {
-        return $this->addResource(model: $model, segment: $segment, foreignKey: $column, resourcePermissions: $resourcePermissions, belongsTo: true);
+        return $this->addResource(model: $model, segment: $segment, foreignKey: $column, embed: $embed, resourcePermissions: $resourcePermissions, belongsTo: true);
     }
 
     /**
@@ -144,6 +146,7 @@ final class ModelResourceBuilder
         bool $globalSearch = false,
         ?string $segment = null,
         ?string $foreignKey = null,
+        bool $embed = false,
         array $resourcePermissions = [
             'list' => 'default-model:list',
             'get' => 'default-model:get',
@@ -180,6 +183,7 @@ final class ModelResourceBuilder
             segment: $segment,
             globalSearch: $globalSearch,
             belongsTo: $belongsTo,
+            embed: $embed,
             actions: $actions,
             events: $events,
         );

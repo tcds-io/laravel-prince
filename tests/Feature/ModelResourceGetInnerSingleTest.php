@@ -47,7 +47,7 @@ class ModelResourceGetInnerSingleTest extends TestCase
         ModelResourceBuilder::create()
             ->resource(
                 TestBelongsToUser::class,
-                resources: fn($b) => $b->belongsTo(TestBelongsToCompany::class),
+                resources: fn($b) => $b->belongsTo(TestBelongsToCompany::class, embed: true),
             )
             ->resource(TestBelongsToCompany::class)
             ->routes();
