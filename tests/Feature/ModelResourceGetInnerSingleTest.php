@@ -102,7 +102,7 @@ class ModelResourceGetInnerSingleTest extends TestCase
         $response->assertJson([
             'data' => [
                 'company' => [
-                    '_resource' => "/users/{$user->id}/company/{$company->id}",
+                    '_resource' => "/users/{$user->id}/companies/{$company->id}",
                 ],
             ],
         ]);
