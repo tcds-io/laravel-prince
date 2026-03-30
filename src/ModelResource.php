@@ -120,11 +120,16 @@ readonly class ModelResource
     public function searchEntry(): array
     {
         $table = $this->table();
+        $hidden = $this->instance()->getHidden();
+        $schema = array_values(array_filter(
+            self::schema($table, $this->casts()),
+            fn(ColumnSchema $col) => !in_array($col->name, $hidden),
+        ));
 
         return [
             'table' => $table,
             'routePrefix' => $this->routePrefix(),
-            'schema' => self::schema($table, $this->casts()),
+            'schema' => $schema,
         ];
     }
 
