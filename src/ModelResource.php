@@ -120,16 +120,11 @@ readonly class ModelResource
     public function searchEntry(): array
     {
         $table = $this->table();
-        $hidden = $this->instance()->getHidden();
-        $schema = array_values(array_filter(
-            self::schema($table, $this->casts()),
-            fn(ColumnSchema $col) => !in_array($col->name, $hidden),
-        ));
 
         return [
             'table' => $table,
             'routePrefix' => $this->routePrefix(),
-            'schema' => $schema,
+            'schema' => $this->visibleSchema($table),
         ];
     }
 
@@ -143,7 +138,7 @@ readonly class ModelResource
      */
     private function registerInGroup(string $table, array $constraints): void
     {
-        $schema = self::schema($table, $this->casts());
+        $schema = $this->visibleSchema($table);
 
         // Collect nested resource info in one pass: used both for the GET inner lists
         // and for registering nested route groups below.
@@ -621,6 +616,17 @@ readonly class ModelResource
         }
 
         return $result;
+    }
+
+    /** @return list<ColumnSchema> */
+    private function visibleSchema(string $table): array
+    {
+        $hidden = $this->instance()->getHidden();
+
+        return array_values(array_filter(
+            self::schema($table, $this->casts()),
+            fn(ColumnSchema $col) => !in_array($col->name, $hidden),
+        ));
     }
 
     /**
