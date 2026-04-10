@@ -23,13 +23,12 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     }
 
     #[Test]
-    public function schema_returns_403_when_permission_missing(): void
+    public function schema_is_always_accessible_regardless_of_permissions(): void
     {
-        // registerRoutes uses the default all-granted permissions; re-register with none
         ModelResource::of(TestInvoice::class, userPermissions: fn() => [])->routes();
 
         $response = $this->getJson('/invoices/_schema');
 
-        $response->assertForbidden();
+        $response->assertOk();
     }
 }

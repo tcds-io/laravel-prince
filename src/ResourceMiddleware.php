@@ -41,7 +41,7 @@ readonly class ResourceMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!in_array($this->action, ($this->userPermissions)())) {
+        if ($this->action !== 'public' && !in_array($this->action, ($this->userPermissions)())) {
             throw new AccessDeniedHttpException();
         }
 
