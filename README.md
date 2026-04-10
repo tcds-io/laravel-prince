@@ -232,7 +232,7 @@ fn() => ['invoices:read']
 
 ### Resource permissions
 
-The permission string each action _requires_. Defaults to the strings below; override per resource when your app uses different permission names:
+The permission each action _requires_. Defaults to the strings below; override per resource when your app uses different permission names:
 
 | Action   | Default required permission    |
 |----------|--------------------------------|
@@ -252,6 +252,33 @@ ModelResourceBuilder::create(userPermissions: fn() => Auth::user()?->permissions
             'create' => 'invoices:write',
             'update' => 'invoices:write',
             'delete' => 'invoices:delete',
+        ],
+    )
+    ->routes();
+```
+
+Besides regular permission strings, two **reserved keywords** control special behaviours:
+
+| Keyword      | Behaviour                                                                 |
+|--------------|---------------------------------------------------------------------------|
+| `'public'`   | Route is registered **without** permission middleware — anyone can access it |
+| `'disabled'` | Route is **not registered** at all — the framework returns 404            |
+
+> **Reserved words:** `'public'` and `'disabled'` must not be used as actual permission names in your application. They are intercepted by the library before any user permission check.
+
+The `/_schema` endpoint is always registered regardless of permission settings, so clients can always discover the resource shape.
+
+```php
+// Read-only resource: anyone can list/get, create/update/delete are disabled
+ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
+    ->resource(
+        model: Product::class,
+        resourcePermissions: [
+            'list'   => 'public',
+            'get'    => 'public',
+            'create' => 'disabled',
+            'update' => 'disabled',
+            'delete' => 'disabled',
         ],
     )
     ->routes();
