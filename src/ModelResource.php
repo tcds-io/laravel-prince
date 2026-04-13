@@ -115,8 +115,10 @@ readonly class ModelResource
     /**
      * Returns the metadata needed for global search indexing of this resource.
      * Called by ModelResourceBuilder to collect entries before registering routes.
+     * The schema is returned as a lazy closure so DB access only happens when the search
+     * endpoint is actually hit (not at route registration time).
      *
-     * @return array{table: string, routePrefix: string, schema: list<ColumnSchema>}
+     * @return array{table: string, routePrefix: string, schema: Closure(): list<ColumnSchema>}
      */
     public function searchEntry(): array
     {
@@ -125,7 +127,7 @@ readonly class ModelResource
         return [
             'table' => $table,
             'routePrefix' => $this->routePrefix(),
-            'schema' => $this->visibleSchema($table),
+            'schema' => fn(): array => $this->visibleSchema($table),
         ];
     }
 
@@ -139,7 +141,14 @@ readonly class ModelResource
      */
     private function registerInGroup(string $table, array $constraints): void
     {
-        $schema = $this->visibleSchema($table);
+        // Resolve schema lazily (per-request) so Schema::getColumns() is not invoked at route
+        // registration time — otherwise composer install / route:cache fail with no DB available.
+        /** @var list<ColumnSchema>|null $schemaCache */
+        $schemaCache = null;
+        /** @var Closure(): list<ColumnSchema> $schema */
+        $schema = function () use (&$schemaCache, $table): array {
+            return $schemaCache ??= $this->visibleSchema($table);
+        };
 
         // Collect nested resource info in one pass: used both for the GET inner lists
         // and for registering nested route groups below.
@@ -290,13 +299,13 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param list<ColumnSchema> $schema
+     * @param Closure(): list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
      */
-    private static function list(string $model, string $table, array $schema, array $constraints): RouteInstance
+    private static function list(string $model, string $table, Closure $schema, array $constraints): RouteInstance
     {
         return Route::get('/', function (Request $request) use ($model, $table, $schema, $constraints) {
-            $paginate = ModelResourceQuery::paginate($model, $constraints, $schema, $request);
+            $paginate = ModelResourceQuery::paginate($model, $constraints, $schema(), $request);
 
             $basePath = rtrim($request->getPathInfo(), '/');
             /** @var list<array{id: int|string, ...}> $rawData */
@@ -322,16 +331,16 @@ readonly class ModelResource
     }
 
     /**
-     * @param list<ColumnSchema> $schema
+     * @param Closure(): list<ColumnSchema> $schema
      * @param list<string> $nestedResourceNames
      */
-    private static function schemaRoute(string $table, array $schema, array $nestedResourceNames): RouteInstance
+    private static function schemaRoute(string $table, Closure $schema, array $nestedResourceNames): RouteInstance
     {
         return Route::get('/_schema', function () use ($table, $schema, $nestedResourceNames) {
             return response()->json([
                 'resource' => $table,
                 'resources' => $nestedResourceNames,
-                'schema' => $schema,
+                'schema' => $schema(),
             ]);
         });
     }
@@ -422,14 +431,14 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param list<ColumnSchema> $schema
+     * @param Closure(): list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
      * @param array<string, class-string> $events
      */
-    private static function create(string $model, array $schema, array $constraints, array $events): RouteInstance
+    private static function create(string $model, Closure $schema, array $constraints, array $events): RouteInstance
     {
         return Route::post('/', function (Request $request) use ($model, $schema, $constraints, $events) {
-            $data = self::data($schema, $request);
+            $data = self::data($schema(), $request);
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                 if ($required !== 'public' && !in_array($required, ($perms)())) {
@@ -466,11 +475,11 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param list<ColumnSchema> $schema
+     * @param Closure(): list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
      * @param array<string, class-string> $events
      */
-    private static function update(string $model, array $schema, array $constraints, array $events): RouteInstance
+    private static function update(string $model, Closure $schema, array $constraints, array $events): RouteInstance
     {
         return Route::patch('/{resourceId}', function (Request $request) use ($model, $schema, $constraints, $events) {
             $resourceId = self::routeId($request, 'resourceId');
@@ -490,7 +499,7 @@ readonly class ModelResource
                 throw new ResourceNotFoundException($resourceId);
             }
 
-            $data = array_filter(self::data($schema, $request), fn(string $key) => $request->has($key), ARRAY_FILTER_USE_KEY);
+            $data = array_filter(self::data($schema(), $request), fn(string $key) => $request->has($key), ARRAY_FILTER_USE_KEY);
 
             foreach ($foreignKeys as $fk) {
                 unset($data[$fk]);

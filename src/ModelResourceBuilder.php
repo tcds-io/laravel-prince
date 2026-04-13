@@ -24,7 +24,7 @@ final class ModelResourceBuilder
     /** @var list<array{resource: ModelResource, foreignKey: ?string}> */
     private array $entries = [];
 
-    /** @var list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> */
+    /** @var list<array{table: string, routePrefix: string, schema: Closure(): list<ColumnSchema>}> */
     private array $searchEntries = [];
 
     /**

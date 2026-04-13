@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tcds\Io\Prince;
 
 use BackedEnum;
+use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -13,12 +14,12 @@ use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 readonly class ModelResourceGlobalSearch
 {
     /**
-     * @param list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $entries
+     * @param list<array{table: string, routePrefix: string, schema: Closure(): list<ColumnSchema>}> $entries
      */
     private function __construct(private array $entries) {}
 
     /**
-     * @param list<array{table: string, routePrefix: string, schema: list<ColumnSchema>}> $entries
+     * @param list<array{table: string, routePrefix: string, schema: Closure(): list<ColumnSchema>}> $entries
      */
     public static function of(array $entries): self
     {
@@ -52,14 +53,14 @@ readonly class ModelResourceGlobalSearch
             $unions = [];
             $bindings = [];
 
-            foreach ($entries as ['table' => $table, 'routePrefix' => $prefix, 'schema' => $schema]) {
+            foreach ($entries as ['table' => $table, 'routePrefix' => $prefix, 'schema' => $schemaResolver]) {
                 $fullPrefix = $groupPrefix !== '' ? "{$groupPrefix}/{$prefix}" : $prefix;
                 $linkExpr = self::linkSql($fullPrefix);
 
                 // Collect matchable columns for this table
                 $columns = [];
 
-                foreach ($schema as $column) {
+                foreach ($schemaResolver() as $column) {
                     if (in_array($column->type, ['integer', 'number', 'datetime'], true)) {
                         continue;
                     }
