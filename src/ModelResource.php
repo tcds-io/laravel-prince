@@ -118,7 +118,7 @@ readonly class ModelResource
      * The schema is returned as a lazy closure so DB access only happens when the search
      * endpoint is actually hit (not at route registration time).
      *
-     * @return array{table: string, routePrefix: string, schema: Closure(): list<ColumnSchema>}
+     * @return array{table: string, routePrefix: string, connection: string|null, schema: Closure(): list<ColumnSchema>}
      */
     public function searchEntry(): array
     {
@@ -127,6 +127,7 @@ readonly class ModelResource
         return [
             'table' => $table,
             'routePrefix' => $this->routePrefix(),
+            'connection' => $this->instance()->getConnectionName(),
             'schema' => fn(): array => $this->visibleSchema($table),
         ];
     }
@@ -666,10 +667,11 @@ readonly class ModelResource
     /** @return list<ColumnSchema> */
     private function visibleSchema(string $table): array
     {
-        $hidden = $this->instance()->getHidden();
+        $instance = $this->instance();
+        $hidden = $instance->getHidden();
 
         return array_values(array_filter(
-            self::schema($table, $this->casts()),
+            self::schema($table, $this->casts(), $instance->getConnectionName()),
             fn(ColumnSchema $col) => !in_array($col->name, $hidden),
         ));
     }
@@ -678,11 +680,11 @@ readonly class ModelResource
      * @param array<string, mixed> $casts
      * @return list<ColumnSchema>
      */
-    private static function schema(string $table, array $casts): array
+    private static function schema(string $table, array $casts, ?string $connection = null): array
     {
         $result = [];
 
-        foreach (Schema::getColumns($table) as $item) {
+        foreach (Schema::connection($connection)->getColumns($table) as $item) {
             /** @var array{name: string, type_name: string} $item */
             $name = $item['name'];
             $castType = $casts[$name] ?? null;
