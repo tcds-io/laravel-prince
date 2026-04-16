@@ -14,12 +14,12 @@ use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 readonly class ModelResourceGlobalSearch
 {
     /**
-     * @param list<array{table: string, routePrefix: string, schema: Closure(): list<ColumnSchema>}> $entries
+     * @param list<array{table: string, routePrefix: string, connection: string|null, schema: Closure(): list<ColumnSchema>}> $entries
      */
     private function __construct(private array $entries) {}
 
     /**
-     * @param list<array{table: string, routePrefix: string, schema: Closure(): list<ColumnSchema>}> $entries
+     * @param list<array{table: string, routePrefix: string, connection: string|null, schema: Closure(): list<ColumnSchema>}> $entries
      */
     public static function of(array $entries): self
     {
@@ -50,89 +50,102 @@ readonly class ModelResourceGlobalSearch
                 return response()->json(['data' => []]);
             }
 
-            $unions = [];
-            $bindings = [];
+            // Group entries by connection so each UNION runs on the correct database.
+            /** @var array<string, list<array{table: string, routePrefix: string, connection: string|null, schema: Closure(): list<ColumnSchema>}>> $grouped */
+            $grouped = [];
 
-            foreach ($entries as ['table' => $table, 'routePrefix' => $prefix, 'schema' => $schemaResolver]) {
-                $fullPrefix = $groupPrefix !== '' ? "{$groupPrefix}/{$prefix}" : $prefix;
-                $linkExpr = self::linkSql($fullPrefix);
+            foreach ($entries as $entry) {
+                $connKey = $entry['connection'] ?? '_default';
+                $grouped[$connKey][] = $entry;
+            }
 
-                // Collect matchable columns for this table
-                $columns = [];
+            $allResults = [];
 
-                foreach ($schemaResolver() as $column) {
-                    if (in_array($column->type, ['integer', 'number', 'datetime'], true)) {
+            foreach ($grouped as $connKey => $connEntries) {
+                $connection = $connKey === '_default' ? null : $connKey;
+                $db = DB::connection($connection);
+                $driverName = $db->getDriverName();
+
+                $unions = [];
+                $bindings = [];
+
+                foreach ($connEntries as ['table' => $table, 'routePrefix' => $prefix, 'schema' => $schemaResolver]) {
+                    $fullPrefix = $groupPrefix !== '' ? "{$groupPrefix}/{$prefix}" : $prefix;
+                    $linkExpr = self::linkSql($fullPrefix, $driverName);
+
+                    // Collect matchable columns for this table
+                    $columns = [];
+
+                    foreach ($schemaResolver() as $column) {
+                        if (in_array($column->type, ['integer', 'number', 'datetime'], true)) {
+                            continue;
+                        }
+
+                        try {
+                            [$operator, $value] = ModelResourceQuery::parseFilter($column, $q);
+                        } catch (BadRequestHttpException) {
+                            continue;
+                        }
+
+                        $columns[] = [
+                            'name' => $column->name,
+                            'operator' => $operator,
+                            'value' => $value instanceof BackedEnum ? $value->value : $value,
+                        ];
+                    }
+
+                    if ($columns === []) {
                         continue;
                     }
 
-                    try {
-                        [$operator, $value] = ModelResourceQuery::parseFilter($column, $q);
-                    } catch (BadRequestHttpException) {
-                        continue;
+                    // One SELECT per table so each record appears at most once even when
+                    // multiple text columns match. The CASE picks the first matching column
+                    // as the description; the WHERE filters to rows where any column matches.
+                    $caseWhen = 'CASE';
+
+                    foreach ($columns as ['name' => $name, 'operator' => $op]) {
+                        $qi = self::quoteIdentifier($name, $driverName);
+                        $caseWhen .= " WHEN {$qi} {$op} ? THEN {$qi}";
                     }
 
-                    $columns[] = [
-                        'name' => $column->name,
-                        'operator' => $operator,
-                        'value' => $value instanceof BackedEnum ? $value->value : $value,
-                    ];
+                    $caseWhen .= ' END';
+
+                    $where = implode(' OR ', array_map(
+                        fn(array $col) => self::quoteIdentifier($col['name'], $driverName) . " {$col['operator']} ?",
+                        $columns,
+                    ));
+
+                    $unions[] = 'SELECT ' . self::quoteIdentifier('id', $driverName) . ", {$caseWhen} AS description, '{$table}' AS resource, {$linkExpr} AS link"
+                        . ' FROM ' . self::quoteIdentifier($table, $driverName) . " WHERE {$where}";
+
+                    foreach ($columns as ['value' => $val]) {
+                        $bindings[] = $val; // for CASE
+                    }
+
+                    foreach ($columns as ['value' => $val]) {
+                        $bindings[] = $val; // for WHERE
+                    }
                 }
 
-                if ($columns === []) {
+                if ($unions === []) {
                     continue;
                 }
 
-                // One SELECT per table so each record appears at most once even when
-                // multiple text columns match. The CASE picks the first matching column
-                // as the description; the WHERE filters to rows where any column matches.
-                //
-                // CASE WHEN col1 op ? THEN col1 WHEN col2 op ? THEN col2 END AS description
-                // WHERE col1 op ? OR col2 op ?
-                //
-                // Bindings order: all CASE values first, then all WHERE values.
-                $caseWhen = 'CASE';
-
-                foreach ($columns as ['name' => $name, 'operator' => $op]) {
-                    $qi = self::quoteIdentifier($name);
-                    $caseWhen .= " WHEN {$qi} {$op} ? THEN {$qi}";
-                }
-
-                $caseWhen .= ' END';
-
-                $where = implode(' OR ', array_map(
-                    fn(array $col) => self::quoteIdentifier($col['name']) . " {$col['operator']} ?",
-                    $columns,
-                ));
-
-                $unions[] = 'SELECT ' . self::quoteIdentifier('id') . ", {$caseWhen} AS description, '{$table}' AS resource, {$linkExpr} AS link"
-                    . ' FROM ' . self::quoteIdentifier($table) . " WHERE {$where}";
-
-                foreach ($columns as ['value' => $val]) {
-                    $bindings[] = $val; // for CASE
-                }
-
-                foreach ($columns as ['value' => $val]) {
-                    $bindings[] = $val; // for WHERE
-                }
+                $sql = implode(' UNION ', $unions);
+                $results = $db->select($sql, $bindings);
+                array_push($allResults, ...$results);
             }
 
-            if ($unions === []) {
-                return response()->json(['data' => []]);
-            }
-
-            $sql = implode(' UNION ', $unions);
-            $results = DB::select($sql, $bindings);
-
-            return response()->json(['data' => $results]);
+            return response()->json(['data' => $allResults]);
         });
     }
 
     /**
      * Returns the SQL expression for building the resource link column, adapting to the DB driver.
      */
-    private static function linkSql(string $routePrefix): string
+    private static function linkSql(string $routePrefix, string $driverName): string
     {
-        return match (DB::connection()->getDriverName()) {
+        return match ($driverName) {
             'sqlite' => "'/{$routePrefix}/' || CAST(id AS TEXT)",
             default => "CONCAT('/{$routePrefix}/', id)",
         };
@@ -142,9 +155,9 @@ readonly class ModelResourceGlobalSearch
      * Quotes an identifier (table or column name) using the correct style for the active DB driver.
      * MySQL/SQLite use backticks; PostgreSQL uses double-quotes.
      */
-    private static function quoteIdentifier(string $name): string
+    private static function quoteIdentifier(string $name, string $driverName): string
     {
-        return match (DB::connection()->getDriverName()) {
+        return match ($driverName) {
             'pgsql' => '"' . str_replace('"', '""', $name) . '"',
             default => '`' . str_replace('`', '``', $name) . '`',
         };
