@@ -184,45 +184,45 @@ readonly class ModelResource
         self::schemaRoute($table, $schema, $nestedResourceNames);
 
         foreach ($this->actions as $action) {
-            if (!$action->isItemAction() && $action->permission !== 'disabled') {
+            if (!$action->isItemAction()) {
                 $this->registerAction($action, $constraints);
             }
         }
 
-        if ($this->resourcePermissions['list'] !== 'disabled') {
+        if (isset($this->resourcePermissions['list'])) {
             $route = self::list($this->model, $table, $schema, $constraints);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['list'], $this->userPermissions);
         }
 
-        if ($this->resourcePermissions['get'] !== 'disabled') {
+        if (isset($this->resourcePermissions['get'])) {
             $route = self::get($this->model, $constraints, $nestedEntries);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['get'], $this->userPermissions);
         }
 
-        if ($this->resourcePermissions['create'] !== 'disabled') {
+        if (isset($this->resourcePermissions['create'])) {
             $route = self::create($this->model, $schema, $constraints, $this->events);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['create'], $this->userPermissions);
         }
 
-        if ($this->resourcePermissions['update'] !== 'disabled') {
+        if (isset($this->resourcePermissions['update'])) {
             $route = self::update($this->model, $schema, $constraints, $this->events);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['update'], $this->userPermissions);
         }
 
-        if ($this->resourcePermissions['delete'] !== 'disabled') {
+        if (isset($this->resourcePermissions['delete'])) {
             $route = self::delete($this->model, $constraints, $this->events);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['delete'], $this->userPermissions);
         }
 
         foreach ($this->actions as $action) {
-            if ($action->isItemAction() && $action->permission !== 'disabled') {
+            if ($action->isItemAction()) {
                 $this->registerAction($action, $constraints);
             }
         }
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
             if ($nestedResource->belongsTo) {
-                if ($nestedResource->resourcePermissions['get'] === 'disabled') {
+                if (!isset($nestedResource->resourcePermissions['get']) || !isset($this->resourcePermissions['get'])) {
                     continue;
                 }
 
@@ -609,7 +609,7 @@ readonly class ModelResource
             default  => throw new \LogicException("Unsupported HTTP method: {$action->method}"),
         };
 
-        if ($action->permission !== null && $action->permission !== 'disabled') {
+        if ($action->permission !== null) {
             self::attachPermissionMiddleware($route, $action->permission, $userPermissions);
         }
     }

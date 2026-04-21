@@ -148,15 +148,14 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
         $response->assertOk();
     }
 
-    // --- disabled ---
+    // --- missing key = endpoint not registered ---
 
     #[Test]
-    public function disabled_permission_does_not_register_route(): void
+    public function missing_permission_key_does_not_register_route(): void
     {
         ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete'], resourcePermissions: [
             'list' => 'model:list',
             'get' => 'model:get',
-            'create' => 'disabled',
             'update' => 'model:update',
             'delete' => 'model:delete',
         ])->routes();
@@ -167,12 +166,11 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     }
 
     #[Test]
-    public function disabled_permission_still_allows_other_actions(): void
+    public function missing_permission_key_still_allows_other_actions(): void
     {
         ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete'], resourcePermissions: [
             'list' => 'model:list',
             'get' => 'model:get',
-            'create' => 'disabled',
             'update' => 'model:update',
             'delete' => 'model:delete',
         ])->routes();
@@ -183,15 +181,9 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     }
 
     #[Test]
-    public function schema_is_accessible_even_when_list_is_disabled(): void
+    public function schema_is_accessible_even_when_all_permission_keys_are_missing(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => [], resourcePermissions: [
-            'list' => 'disabled',
-            'get' => 'disabled',
-            'create' => 'disabled',
-            'update' => 'disabled',
-            'delete' => 'disabled',
-        ])->routes();
+        ModelResource::of(TestInvoice::class, userPermissions: fn() => [], resourcePermissions: [])->routes();
 
         $response = $this->getJson('/invoices/_schema');
 
