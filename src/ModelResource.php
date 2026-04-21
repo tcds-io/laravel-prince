@@ -34,7 +34,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param Closure(): list<string> $userPermissions
-     * @param array{list: Permission, get: Permission, create: Permission, update: Permission, delete: Permission} $resourcePermissions
+     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param array<int|string, ModelResource> $resources
      * @param list<ResourceAction> $actions
      * @param array<string, class-string> $events
@@ -57,7 +57,7 @@ readonly class ModelResource
      *
      * @param class-string<Model> $model
      * @param (Closure(): list<string>)|null $userPermissions Invoked per request — defaults to granting all standard model permissions
-     * @param array{list: Permission, get: Permission, create: Permission, update: Permission, delete: Permission} $resourcePermissions Maps each action to the permission it requires
+     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions Maps each action to the permission it requires
      * @param array<int|string, ModelResource|class-string<Model>> $resources
      * @param string|null $segment Custom URL segment (defaults to the model's table name)
      * @param bool $globalSearch Whether this resource is included in global search
@@ -287,7 +287,7 @@ readonly class ModelResource
                 'param' => $parentParam,
                 'fk' => $foreignKey,
                 'model' => $this->model,
-                'requiredPermission' => $this->resourcePermissions['get'],
+                'requiredPermission' => $this->resourcePermissions['get'] ?? 'public',
                 'userPermissions' => $this->userPermissions,
             ]];
             $nestedTable = $nestedResource->table();
