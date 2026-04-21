@@ -257,28 +257,26 @@ ModelResourceBuilder::create(userPermissions: fn() => Auth::user()?->permissions
     ->routes();
 ```
 
-Besides regular permission strings, two **reserved keywords** control special behaviours:
+Besides regular permission strings, one **reserved keyword** controls a special behaviour:
 
-| Keyword      | Behaviour                                                                 |
-|--------------|---------------------------------------------------------------------------|
-| `'public'`   | Route is registered **without** permission middleware — anyone can access it |
-| `'disabled'` | Route is **not registered** at all — the framework returns 404            |
+| Keyword    | Behaviour                                                                 |
+|------------|---------------------------------------------------------------------------|
+| `'public'` | Route is registered **without** permission middleware — anyone can access it |
 
-> **Reserved words:** `'public'` and `'disabled'` must not be used as actual permission names in your application. They are intercepted by the library before any user permission check.
+To disable an endpoint entirely, simply **omit its key** from `resourcePermissions`. The route will not be registered and the framework returns 404.
+
+> **Reserved word:** `'public'` must not be used as an actual permission name in your application. It is intercepted by the library before any user permission check.
 
 The `/_schema` endpoint is always registered regardless of permission settings, so clients can always discover the resource shape.
 
 ```php
-// Read-only resource: anyone can list/get, create/update/delete are disabled
+// Read-only resource: anyone can list/get, create/update/delete are not registered
 ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
     ->resource(
         model: Product::class,
         resourcePermissions: [
-            'list'   => 'public',
-            'get'    => 'public',
-            'create' => 'disabled',
-            'update' => 'disabled',
-            'delete' => 'disabled',
+            'list' => 'public',
+            'get'  => 'public',
         ],
     )
     ->routes();

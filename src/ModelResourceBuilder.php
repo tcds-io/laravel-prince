@@ -58,7 +58,7 @@ final class ModelResourceBuilder
      * @param bool $globalSearch Whether to include this resource in the global /search route
      * @param string|null $segment Custom URL segment (defaults to the model's table name)
      * @param string|null $foreignKey FK column referencing the parent table (only meaningful when used inside a $resources callback; defaults to {singular_parent_table}_id)
-     * @param array{list: Permission, get: Permission, create: Permission, update: Permission, delete: Permission} $resourcePermissions Maps each action to the permission string it requires
+     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions Maps each action to the permission string it requires
      * @param list<ResourceAction> $actions Extra routes attached to this resource
      * @param array<string, class-string> $events Lifecycle event overrides — merged with defaults (creating, created, updating, updated, deleting, deleted)
      */
@@ -87,7 +87,7 @@ final class ModelResourceBuilder
      *
      * @param class-string<Model> $model
      * @param string|null $foreignKey FK column on the child model (defaults to {singular_parent_table}_id)
-     * @param array{list: Permission, get: Permission, create: Permission, update: Permission, delete: Permission} $resourcePermissions
+     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param list<ResourceAction> $actions
      * @param array<string, class-string> $events
      */
@@ -116,7 +116,7 @@ final class ModelResourceBuilder
      *
      * @param class-string<Model> $model
      * @param string|null $column Column on the parent model holding the FK (defaults to {singular_related_table}_id)
-     * @param array{list: Permission, get: Permission, create: Permission, update: Permission, delete: Permission} $resourcePermissions
+     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      */
     public function belongsTo(
         string $model,
@@ -137,7 +137,7 @@ final class ModelResourceBuilder
     /**
      * @param class-string<Model> $model
      * @param (Closure(self): void)|null $resources
-     * @param array{list: Permission, get: Permission, create: Permission, update: Permission, delete: Permission} $resourcePermissions
+     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param list<ResourceAction> $actions
      * @param array<string, class-string> $events
      */
