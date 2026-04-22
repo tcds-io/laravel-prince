@@ -439,7 +439,13 @@ readonly class ModelResource
     private static function create(string $model, Closure $schema, array $constraints, array $events): RouteInstance
     {
         return Route::post('/', function (Request $request) use ($model, $schema, $constraints, $events) {
-            $data = self::data($schema(), $request);
+            $columns = array_values(array_filter($schema(), fn(ColumnSchema $col) => $col->name !== 'id'));
+            $data = self::data($columns, $request);
+
+            $rawId = $request->input('id');
+            if ($rawId !== null && $rawId !== '') {
+                $data['id'] = $rawId;
+            }
 
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                 if ($required !== 'public' && !in_array($required, ($perms)())) {
@@ -457,7 +463,7 @@ readonly class ModelResource
             }
 
             try {
-                /** @var object{ id: int } $record */
+                /** @var object{ id: int|string } $record */
                 $record = $model::query()->create($data);
             } catch (QueryException $exception) {
                 $errorInfo = $exception->errorInfo;
