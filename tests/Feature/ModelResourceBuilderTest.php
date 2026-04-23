@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Test\Tcds\Io\Prince\Feature;
 
+use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Attributes\Test;
 use Tcds\Io\Prince\ModelResourceBuilder;
 
@@ -63,4 +64,37 @@ class ModelResourceBuilderTest extends ModelResourceNestedTestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.resource', 'invoices');
     }
+
+    // --- duplicate detection ---
+
+    #[Test]
+    public function routes_throws_when_two_models_share_the_same_table(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches("/route prefix 'invoices'/");
+
+        ModelResourceBuilder::create()
+            ->resource(TestInvoice::class)
+            ->resource(TestDuplicateInvoice::class)
+            ->routes();
+    }
+
+    #[Test]
+    public function routes_does_not_throw_when_segment_disambiguates_duplicate_table(): void
+    {
+        ModelResourceBuilder::create()
+            ->resource(TestInvoice::class)
+            ->resource(TestDuplicateInvoice::class, segment: 'legacy-invoices')
+            ->routes();
+
+        $this->getJson('/invoices')->assertOk();
+        $this->getJson('/legacy-invoices')->assertOk();
+    }
+}
+
+class TestDuplicateInvoice extends Model
+{
+    protected $table = 'invoices';
+
+    protected $fillable = ['title', 'amount'];
 }
