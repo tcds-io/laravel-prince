@@ -14,7 +14,7 @@ class ModelResourceBatchDeleteTest extends ModelResourceTestCase
         $a = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
         $b = TestInvoice::create(['title' => 'Invoice B', 'amount' => 200.00]);
 
-        $response = $this->deleteJson('/invoices', [$a->id, $b->id]);
+        $response = $this->deleteJson('/invoices', ['data' => [$a->id, $b->id]]);
 
         $response->assertNoContent();
         $this->assertDatabaseMissing('invoices', ['id' => $a->id]);
@@ -26,7 +26,7 @@ class ModelResourceBatchDeleteTest extends ModelResourceTestCase
     {
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
 
-        $response = $this->deleteJson('/invoices', [$invoice->id, 999]);
+        $response = $this->deleteJson('/invoices', ['data' => [$invoice->id, 999]]);
 
         $response->assertNotFound();
     }
@@ -36,7 +36,7 @@ class ModelResourceBatchDeleteTest extends ModelResourceTestCase
     {
         $a = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
 
-        $this->deleteJson('/invoices', [$a->id, 999]);
+        $this->deleteJson('/invoices', ['data' => [$a->id, 999]]);
 
         $this->assertDatabaseHas('invoices', ['id' => $a->id]);
     }

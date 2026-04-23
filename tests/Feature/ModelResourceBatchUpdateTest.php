@@ -15,8 +15,10 @@ class ModelResourceBatchUpdateTest extends ModelResourceTestCase
         $b = TestInvoice::create(['title' => 'Invoice B', 'amount' => 200.00]);
 
         $response = $this->patchJson('/invoices', [
-            ['id' => $a->id, 'title' => 'Invoice A (updated)'],
-            ['id' => $b->id, 'amount' => '300.00'],
+            'data' => [
+                ['id' => $a->id, 'title' => 'Invoice A (updated)'],
+                ['id' => $b->id, 'amount' => '300.00'],
+            ],
         ]);
 
         $response->assertNoContent();
@@ -30,8 +32,10 @@ class ModelResourceBatchUpdateTest extends ModelResourceTestCase
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
 
         $response = $this->patchJson('/invoices', [
-            ['id' => $invoice->id, 'title' => 'Updated'],
-            ['id' => 999, 'title' => 'Ghost'],
+            'data' => [
+                ['id' => $invoice->id, 'title' => 'Updated'],
+                ['id' => 999, 'title' => 'Ghost'],
+            ],
         ]);
 
         $response->assertNotFound();
@@ -43,8 +47,10 @@ class ModelResourceBatchUpdateTest extends ModelResourceTestCase
         $a = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100.00]);
 
         $this->patchJson('/invoices', [
-            ['id' => $a->id, 'title' => 'Updated'],
-            ['id' => 999, 'title' => 'Ghost'],
+            'data' => [
+                ['id' => $a->id, 'title' => 'Updated'],
+                ['id' => 999, 'title' => 'Ghost'],
+            ],
         ]);
 
         $this->assertDatabaseHas('invoices', ['id' => $a->id, 'title' => 'Invoice A']);

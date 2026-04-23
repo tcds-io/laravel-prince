@@ -487,10 +487,12 @@ readonly class ModelResource
                 return ['id' => $record->id];
             };
 
-            // Batch: body is a JSON array.
-            if ($request->isJson() && is_array($decoded = json_decode($request->getContent(), true)) && array_is_list($decoded)) {
-                /** @var list<array<string, mixed>> $decoded */
-                $results = DB::transaction(fn() => array_map($createOne, $decoded));
+            // Batch: body is exactly {"data": [...]} — the only key must be "data" and its value a list.
+            $items = $request->input('data');
+
+            if (array_keys($request->all()) === ['data'] && is_array($items) && array_is_list($items)) {
+                /** @var list<array<string, mixed>> $items */
+                $results = DB::transaction(fn() => array_map($createOne, $items));
 
                 return response()->json(['data' => $results]);
             }
@@ -600,7 +602,7 @@ readonly class ModelResource
 
             DB::transaction(function () use ($model, $allColumns, $foreignKeys, $events, $request) {
                 /** @var list<array<string, mixed>> $items */
-                $items = $request->all();
+                $items = $request->input('data', []);
 
                 foreach ($items as $item) {
                     $resourceId = $item['id'] ?? null;
@@ -663,7 +665,7 @@ readonly class ModelResource
 
             DB::transaction(function () use ($model, $foreignKeys, $events, $request) {
                 /** @var list<int|string> $ids */
-                $ids = $request->all();
+                $ids = $request->input('data', []);
 
                 foreach ($ids as $resourceId) {
                     $query = $model::query();
