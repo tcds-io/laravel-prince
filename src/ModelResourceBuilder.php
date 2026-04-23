@@ -209,6 +209,18 @@ final class ModelResourceBuilder
      */
     public function routes(): void
     {
+        $seen = [];
+        foreach ($this->entries as ['resource' => $resource]) {
+            $prefix = $resource->routePrefix();
+            if (array_key_exists($prefix, $seen)) {
+                throw new \LogicException(
+                    "Two resources share the same route prefix '{$prefix}': {$seen[$prefix]} and {$resource->model}. "
+                    . "Use the 'segment' parameter on one of them to assign a unique URL prefix."
+                );
+            }
+            $seen[$prefix] = $resource->model;
+        }
+
         foreach ($this->entries as ['resource' => $resource]) {
             $resource->routes();
         }

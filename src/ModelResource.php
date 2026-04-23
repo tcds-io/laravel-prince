@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RouteInstance;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -40,7 +41,7 @@ readonly class ModelResource
      * @param array<string, class-string> $events
      */
     private function __construct(
-        private string $model,
+        public readonly string $model,
         private Closure $userPermissions,
         private array $resourcePermissions,
         private array $resources,
@@ -132,7 +133,7 @@ readonly class ModelResource
         ];
     }
 
-    private function routePrefix(): string
+    public function routePrefix(): string
     {
         return $this->segment ?? $this->table();
     }
@@ -205,11 +206,15 @@ readonly class ModelResource
         }
 
         if (isset($this->resourcePermissions['update'])) {
+            $route = self::batchUpdate($this->model, $schema, $constraints, $this->events);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['update'], $this->userPermissions);
             $route = self::update($this->model, $schema, $constraints, $this->events);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['update'], $this->userPermissions);
         }
 
         if (isset($this->resourcePermissions['delete'])) {
+            $route = self::batchDelete($this->model, $constraints, $this->events);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['delete'], $this->userPermissions);
             $route = self::delete($this->model, $constraints, $this->events);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['delete'], $this->userPermissions);
         }
@@ -440,43 +445,58 @@ readonly class ModelResource
     {
         return Route::post('/', function (Request $request) use ($model, $schema, $constraints, $events) {
             $columns = array_values(array_filter($schema(), fn(ColumnSchema $col) => $col->name !== 'id'));
-            $data = self::data($columns, $request);
 
-            $rawId = $request->input('id');
-            if ($rawId !== null && $rawId !== '') {
-                $data['id'] = $rawId;
-            }
-
+            $fkData = [];
             foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
                 if ($required !== 'public' && !in_array($required, ($perms)())) {
                     throw new AccessDeniedHttpException();
                 }
                 $parentId = self::routeId($request, $param);
                 ModelResourceQuery::findOrThrow($parentModel, $parentId);
-                $data[$fk] = $parentId;
+                $fkData[$fk] = $parentId;
             }
 
-            $creatingEvent = new $events['creating']($model, $data);
-            Event::dispatch($creatingEvent);
-            if ($creatingEvent instanceof MutableDataEvent) {
-                $data = $creatingEvent->data;
+            $createOne = function (array $input) use ($model, $columns, $fkData, $events): array {
+                $data = self::data($columns, $input);
+
+                $rawId = $input['id'] ?? null;
+                if ($rawId !== null && $rawId !== '') {
+                    $data['id'] = $rawId;
+                }
+
+                $data = [...$data, ...$fkData];
+
+                $creatingEvent = new $events['creating']($model, $data);
+                Event::dispatch($creatingEvent);
+                if ($creatingEvent instanceof MutableDataEvent) {
+                    $data = $creatingEvent->data;
+                }
+
+                try {
+                    /** @var object{ id: int|string } $record */
+                    $record = $model::query()->create($data);
+                } catch (QueryException $exception) {
+                    $errorInfo = $exception->errorInfo;
+                    $error = is_array($errorInfo) ? ($errorInfo[2] ?? null) : null;
+
+                    throw new BadRequestHttpException(is_string($error) ? $error : 'Failed to create resource');
+                }
+
+                Event::dispatch(new $events['created']($record));
+
+                return ['id' => $record->id];
+            };
+
+            // Batch: body is a JSON array.
+            if ($request->isJson() && is_array($decoded = json_decode($request->getContent(), true)) && array_is_list($decoded)) {
+                /** @var list<array<string, mixed>> $decoded */
+                $results = DB::transaction(fn() => array_map($createOne, $decoded));
+
+                return response()->json(['data' => $results]);
             }
 
-            try {
-                /** @var object{ id: int|string } $record */
-                $record = $model::query()->create($data);
-            } catch (QueryException $exception) {
-                $errorInfo = $exception->errorInfo;
-                $error = is_array($errorInfo) ? ($errorInfo[2] ?? null) : null;
-
-                throw new BadRequestHttpException(is_string($error) ? $error : 'Failed to create resource');
-            }
-
-            Event::dispatch(new $events['created']($record));
-
-            return response()->json([
-                'id' => $record->id,
-            ]);
+            // Single: body is a JSON object.
+            return response()->json($createOne($request->all()));
         });
     }
 
@@ -506,7 +526,7 @@ readonly class ModelResource
                 throw new ResourceNotFoundException($resourceId);
             }
 
-            $data = array_filter(self::data($schema(), $request), fn(string $key) => $request->has($key), ARRAY_FILTER_USE_KEY);
+            $data = array_filter(self::data($schema(), $request->all()), fn(string $key) => $request->has($key), ARRAY_FILTER_USE_KEY);
 
             foreach ($foreignKeys as $fk) {
                 unset($data[$fk]);
@@ -554,6 +574,113 @@ readonly class ModelResource
             $record->delete();
 
             Event::dispatch(new $events['deleted']($resourceId));
+
+            return response(status: Response::HTTP_NO_CONTENT);
+        });
+    }
+
+    /**
+     * @param class-string<Model> $model
+     * @param Closure(): list<ColumnSchema> $schema
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<string, class-string> $events
+     */
+    private static function batchUpdate(string $model, Closure $schema, array $constraints, array $events): RouteInstance
+    {
+        return Route::patch('/', function (Request $request) use ($model, $schema, $constraints, $events) {
+            $allColumns = $schema();
+            $foreignKeys = [];
+
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                if ($required !== 'public' && !in_array($required, ($perms)())) {
+                    throw new AccessDeniedHttpException();
+                }
+                $foreignKeys[$fk] = self::routeId($request, $param);
+            }
+
+            DB::transaction(function () use ($model, $allColumns, $foreignKeys, $events, $request) {
+                /** @var list<array<string, mixed>> $items */
+                $items = $request->all();
+
+                foreach ($items as $item) {
+                    $resourceId = $item['id'] ?? null;
+                    if ($resourceId === null) {
+                        throw new BadRequestHttpException("Each item in a batch update must include an 'id'");
+                    }
+                    /** @var int|string $resourceId */
+
+                    $query = $model::query();
+                    foreach ($foreignKeys as $fk => $parentId) {
+                        $query->where($fk, $parentId);
+                    }
+
+                    $record = $query->find($resourceId);
+                    if ($record === null) {
+                        throw new ResourceNotFoundException($resourceId);
+                    }
+
+                    $data = array_filter(
+                        self::data($allColumns, $item),
+                        fn(string $key) => array_key_exists($key, $item) && $key !== 'id',
+                        ARRAY_FILTER_USE_KEY
+                    );
+
+                    foreach (array_keys($foreignKeys) as $fk) {
+                        unset($data[$fk]);
+                    }
+
+                    $updatingEvent = new $events['updating']($record, $data);
+                    Event::dispatch($updatingEvent);
+                    if ($updatingEvent instanceof MutableDataEvent) {
+                        $data = $updatingEvent->data;
+                    }
+
+                    $record->update($data);
+                    Event::dispatch(new $events['updated']($record));
+                }
+            });
+
+            return response(status: Response::HTTP_NO_CONTENT);
+        });
+    }
+
+    /**
+     * @param class-string<Model> $model
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<string, class-string> $events
+     */
+    private static function batchDelete(string $model, array $constraints, array $events): RouteInstance
+    {
+        return Route::delete('/', function (Request $request) use ($model, $constraints, $events) {
+            $foreignKeys = [];
+
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
+                if ($required !== 'public' && !in_array($required, ($perms)())) {
+                    throw new AccessDeniedHttpException();
+                }
+                $foreignKeys[$fk] = self::routeId($request, $param);
+            }
+
+            DB::transaction(function () use ($model, $foreignKeys, $events, $request) {
+                /** @var list<int|string> $ids */
+                $ids = $request->all();
+
+                foreach ($ids as $resourceId) {
+                    $query = $model::query();
+                    foreach ($foreignKeys as $fk => $parentId) {
+                        $query->where($fk, $parentId);
+                    }
+
+                    $record = $query->find($resourceId);
+                    if ($record === null) {
+                        throw new ResourceNotFoundException($resourceId);
+                    }
+
+                    Event::dispatch(new $events['deleting']($record));
+                    $record->delete();
+                    Event::dispatch(new $events['deleted']($resourceId));
+                }
+            });
 
             return response(status: Response::HTTP_NO_CONTENT);
         });
@@ -653,15 +780,17 @@ readonly class ModelResource
 
     /**
      * @param list<ColumnSchema> $schema
+     * @param array<array-key, mixed> $input
      * @return array<string, mixed>
      */
-    private static function data(array $schema, Request $request): array
+    private static function data(array $schema, array $input): array
     {
         $result = [];
 
         foreach ($schema as $column) {
             try {
-                $result[$column->name] = $column->valueOf($request);
+                $value = $input[$column->name] ?? null;
+                $result[$column->name] = ($value !== null && $value !== '') ? call_user_func($column->parser, $value) : null;
             } catch (Throwable) {
                 throw new BadRequestHttpException("Value of `$column->name` is invalid");
             }
