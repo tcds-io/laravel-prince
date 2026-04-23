@@ -12,8 +12,10 @@ class ModelResourceBatchCreateTest extends ModelResourceTestCase
     public function batch_create_persists_all_records(): void
     {
         $this->postJson('/invoices', [
-            ['title' => 'Invoice A', 'amount' => '100.00'],
-            ['title' => 'Invoice B', 'amount' => '200.00'],
+            'data' => [
+                ['title' => 'Invoice A', 'amount' => '100.00'],
+                ['title' => 'Invoice B', 'amount' => '200.00'],
+            ],
         ]);
 
         $this->assertDatabaseHas('invoices', ['title' => 'Invoice A', 'amount' => 100.00]);
@@ -24,8 +26,10 @@ class ModelResourceBatchCreateTest extends ModelResourceTestCase
     public function batch_create_returns_the_ids_of_all_new_records(): void
     {
         $response = $this->postJson('/invoices', [
-            ['title' => 'Invoice A', 'amount' => '100.00'],
-            ['title' => 'Invoice B', 'amount' => '200.00'],
+            'data' => [
+                ['title' => 'Invoice A', 'amount' => '100.00'],
+                ['title' => 'Invoice B', 'amount' => '200.00'],
+            ],
         ]);
 
         $ids = TestInvoice::pluck('id')->all();
@@ -38,8 +42,10 @@ class ModelResourceBatchCreateTest extends ModelResourceTestCase
     public function batch_create_is_atomic_and_rolls_back_on_failure(): void
     {
         $this->postJson('/invoices', [
-            ['title' => 'Invoice A', 'amount' => '100.00'],
-            ['title' => null, 'amount' => null],   // violates NOT NULL on title
+            'data' => [
+                ['title' => 'Invoice A', 'amount' => '100.00'],
+                ['title' => null, 'amount' => null],   // violates NOT NULL on title
+            ],
         ]);
 
         $this->assertDatabaseMissing('invoices', ['title' => 'Invoice A']);
@@ -52,5 +58,21 @@ class ModelResourceBatchCreateTest extends ModelResourceTestCase
 
         $response->assertOk();
         $response->assertExactJson(['id' => TestInvoice::first()->id]);
+    }
+
+    #[Test]
+    public function single_create_is_not_misdetected_when_model_has_a_data_field(): void
+    {
+        // Body has a "data" key alongside other fields — must NOT be treated as batch.
+        $response = $this->postJson('/invoices', [
+            'title'  => 'Invoice A',
+            'amount' => '100.00',
+            'data'   => 'some value',   // extra key alongside "data"
+        ]);
+
+        // Still a single-create response shape, not a batch response.
+        $response->assertOk();
+        $this->assertArrayHasKey('id', $response->json());
+        $this->assertArrayNotHasKey('data', $response->json());
     }
 }
