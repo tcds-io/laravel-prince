@@ -27,28 +27,39 @@ final class ModelResourceBuilder
     /** @var list<array{table: string, routePrefix: string, connection: string|null, schema: Closure(): list<ColumnSchema>}> */
     private array $searchEntries = [];
 
-    /**
-     * @param Closure(): list<Permission> $userPermissions
-     */
-    private function __construct(private readonly Closure $userPermissions) {}
+    /** @param Closure(): list<Permission> $userPermissions */
+    private Closure $userPermissions;
+
+    private function __construct()
+    {
+        $this->userPermissions = fn() => [
+            'default:model.list',
+            'default:model.get',
+            'default:model.create',
+            'default:model.update',
+            'default:model.delete',
+        ];
+    }
+
+    public static function create(): self
+    {
+        return new self();
+    }
 
     /**
      * Creates a new builder. The given userPermissions are inherited by all resources.
      * Each resource sets its own resourcePermissions via resource().
      *
-     * @param (Closure(): list<Permission>)|null $userPermissions The permissions the current user holds
+     * @param Closure(): list<Permission> $userPermissions The permissions the current user holds
      */
-    public static function create(
-        ?Closure $userPermissions = null,
-    ): self {
-        return new self($userPermissions ?? fn() => [
-            'default-model:list',
-            'default-model:get',
-            'default-model:create',
-            'default-model:update',
-            'default-model:delete',
-        ]);
+    public function userPermissions(Closure $userPermissions): self
+    {
+        $this->userPermissions = $userPermissions;
+
+        return $this;
     }
+
+    public function permissions(): void {}
 
     /**
      * Adds a resource to the builder.
@@ -69,11 +80,11 @@ final class ModelResourceBuilder
         ?string $segment = null,
         ?string $foreignKey = null,
         array $resourcePermissions = [
-            'list' => 'default-model:list',
-            'get' => 'default-model:get',
-            'create' => 'default-model:create',
-            'update' => 'default-model:update',
-            'delete' => 'default-model:delete',
+            'list' => 'default:model.list',
+            'get' => 'default:model.get',
+            'create' => 'default:model.create',
+            'update' => 'default:model.update',
+            'delete' => 'default:model.delete',
         ],
         array $actions = [],
         array $events = [],
@@ -97,11 +108,11 @@ final class ModelResourceBuilder
         ?string $segment = null,
         bool $embed = false,
         array $resourcePermissions = [
-            'list' => 'default-model:list',
-            'get' => 'default-model:get',
-            'create' => 'default-model:create',
-            'update' => 'default-model:update',
-            'delete' => 'default-model:delete',
+            'list' => 'default:model.list',
+            'get' => 'default:model.get',
+            'create' => 'default:model.create',
+            'update' => 'default:model.update',
+            'delete' => 'default:model.delete',
         ],
         array $actions = [],
         array $events = [],
@@ -124,11 +135,11 @@ final class ModelResourceBuilder
         ?string $segment = null,
         bool $embed = false,
         array $resourcePermissions = [
-            'list' => 'default-model:list',
-            'get' => 'default-model:get',
-            'create' => 'default-model:create',
-            'update' => 'default-model:update',
-            'delete' => 'default-model:delete',
+            'list' => 'default:model.list',
+            'get' => 'default:model.get',
+            'create' => 'default:model.create',
+            'update' => 'default:model.update',
+            'delete' => 'default:model.delete',
         ],
     ): self {
         return $this->addResource(model: $model, segment: $segment, foreignKey: $column, embed: $embed, resourcePermissions: $resourcePermissions, belongsTo: true);
@@ -149,17 +160,17 @@ final class ModelResourceBuilder
         ?string $foreignKey = null,
         bool $embed = false,
         array $resourcePermissions = [
-            'list' => 'default-model:list',
-            'get' => 'default-model:get',
-            'create' => 'default-model:create',
-            'update' => 'default-model:update',
-            'delete' => 'default-model:delete',
+            'list' => 'default:model.list',
+            'get' => 'default:model.get',
+            'create' => 'default:model.create',
+            'update' => 'default:model.update',
+            'delete' => 'default:model.delete',
         ],
         array $actions = [],
         array $events = [],
         bool $belongsTo = false,
     ): self {
-        $nestedBuilder = new self($this->userPermissions);
+        $nestedBuilder = (new self())->userPermissions($this->userPermissions);
 
         if ($resources !== null) {
             $resources($nestedBuilder);
@@ -215,7 +226,7 @@ final class ModelResourceBuilder
             if (array_key_exists($prefix, $seen)) {
                 throw new \LogicException(
                     "Two resources share the same route prefix '{$prefix}': {$seen[$prefix]} and {$resource->model}. "
-                    . "Use the 'segment' parameter on one of them to assign a unique URL prefix."
+                    . "Use the 'segment' parameter on one of them to assign a unique URL prefix.",
                 );
             }
             $seen[$prefix] = $resource->model;

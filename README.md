@@ -236,11 +236,11 @@ The permission each action _requires_. Defaults to the strings below; override p
 
 | Action   | Default required permission    |
 |----------|--------------------------------|
-| `list`   | `default-model:list`           |
-| `get`    | `default-model:get`            |
-| `create` | `default-model:create`         |
-| `update` | `default-model:update`         |
-| `delete` | `default-model:delete`         |
+| `list`   | `default:model.list`           |
+| `get`    | `default:model.get`            |
+| `create` | `default:model.create`         |
+| `update` | `default:model.update`         |
+| `delete` | `default:model.delete`         |
 
 ```php
 ModelResourceBuilder::create(userPermissions: fn() => Auth::user()?->permissions ?? [])
