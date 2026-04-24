@@ -15,8 +15,7 @@ class ModelPermissionsTest extends TestCase
     {
         $this->assertEquals(
             [
-                'list' => 'finance:invoice.list',
-                'get' => 'finance:invoice.get',
+                'read' => 'finance:invoice.read',
                 'create' => 'finance:invoice.create',
                 'update' => 'finance:invoice.update',
                 'delete' => 'finance:invoice.delete',

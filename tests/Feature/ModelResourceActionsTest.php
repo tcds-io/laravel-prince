@@ -31,7 +31,7 @@ class ModelResourceActionsTest extends ModelResourceTestCase
                     permission: 'invoices:send',
                 ),
             ],
-            userPermissions: fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete', 'invoices:send'],
+            userPermissions: fn() => ['model:read', 'model:create', 'model:update', 'model:delete', 'invoices:send'],
         )->routes();
     }
 
@@ -82,8 +82,7 @@ class ModelResourceActionsTest extends ModelResourceTestCase
             ],
             userPermissions: fn() => [], // no permissions
             resourcePermissions: [
-                'list' => 'model:list',
-                'get' => 'model:get',
+                'read' => 'model:read',
                 'create' => 'model:create',
                 'update' => 'model:update',
                 'delete' => 'model:delete',

@@ -206,8 +206,7 @@ DELETE /invoices
   ],
   "resources": ["items"],
   "permissions": {
-    "list":   "invoices:read",
-    "get":    "invoices:read",
+    "read":   "invoices:read",
     "create": "invoices:write",
     "update": "invoices:write",
     "delete": "invoices:delete"
@@ -215,13 +214,13 @@ DELETE /invoices
 }
 ```
 
-Only permissions the current user actually holds appear in the map — so a read-only user sees only `list` and `get`. Endpoints with `'public'` permission are always included. Extra [action](#actions) permissions appear under slug-formatted keys:
+Only permissions the current user actually holds appear in the map — so a read-only user sees only `read`. Endpoints with `'public'` permission are always included. Extra [action](#actions) permissions appear under slug-formatted keys:
 
 ```json
 "permissions": {
-  "list":          "invoices:read",
-  "post-import":   "invoices:write",
-  "get-id-preview":"invoices:read"
+  "read":           "invoices:read",
+  "post-import":    "invoices:write",
+  "get-id-preview": "invoices:read"
 }
 ```
 
@@ -326,13 +325,12 @@ fn() => ['invoices:read']
 
 The permission each action _requires_. Defaults to the strings below; override per resource when your app uses different permission names:
 
-| Action   | Default required permission    |
-|----------|--------------------------------|
-| `list`   | `default:model.list`           |
-| `get`    | `default:model.get`            |
-| `create` | `default:model.create`         |
-| `update` | `default:model.update`         |
-| `delete` | `default:model.delete`         |
+| Action          | Default required permission    |
+|-----------------|--------------------------------|
+| `list` + `get`  | `default:model.read`           |
+| `create`        | `default:model.create`         |
+| `update`        | `default:model.update`         |
+| `delete`        | `default:model.delete`         |
 
 ```php
 ModelResourceBuilder::create()
@@ -340,8 +338,7 @@ ModelResourceBuilder::create()
     ->resource(
         model: Invoice::class,
         resourcePermissions: [
-            'list'   => 'invoices:read',
-            'get'    => 'invoices:read',
+            'read'   => 'invoices:read',
             'create' => 'invoices:write',
             'update' => 'invoices:write',
             'delete' => 'invoices:delete',
@@ -367,8 +364,7 @@ ModelResourceBuilder::create()
     ->resource(
         model: Product::class,
         resourcePermissions: [
-            'list' => 'public',
-            'get'  => 'public',
+            'read' => 'public',
         ],
     )
     ->routes();
@@ -421,8 +417,7 @@ ModelResourceBuilder::create()
     ->resource(
         model: Invoice::class,
         resourcePermissions: [
-            'list'   => 'invoices:read',
-            'get'    => 'invoices:read',
+            'read'   => 'invoices:read',
             'create' => 'invoices:write',
             'update' => 'invoices:write',
             'delete' => 'invoices:delete',
