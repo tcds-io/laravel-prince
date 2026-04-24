@@ -12,7 +12,7 @@ class ModelResourceSchemaActionsTest extends ModelResourceTestCase
 {
     protected function registerRoutes(): void
     {
-        ModelResourceBuilder::create(userPermissions: fn() => ['invoices:import', 'invoices:preview'])
+        ModelResourceBuilder::create()->userPermissions(fn() => ['invoices:import', 'invoices:preview'])
             ->resource(TestInvoice::class, actions: [
                 ResourceAction::post('/import', TestSchemaImportAction::class, permission: 'invoices:import'),
                 ResourceAction::get('/{id}/preview', TestSchemaImportAction::class, permission: 'invoices:preview'),
