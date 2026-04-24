@@ -182,7 +182,7 @@ readonly class ModelResource
         // /_schema is always registered so clients can discover the resource shape.
         // It must be registered before /{resourceId} to avoid being captured as an ID.
         // Collection actions (no {id} in path) must also precede /{resourceId} for the same reason.
-        self::schemaRoute($table, $schema, $nestedResourceNames);
+        self::schemaRoute($table, $schema, $nestedResourceNames, $this->resourcePermissions, $this->actions);
 
         foreach ($this->actions as $action) {
             if (!$action->isItemAction()) {
@@ -339,14 +339,32 @@ readonly class ModelResource
     /**
      * @param Closure(): list<ColumnSchema> $schema
      * @param list<string> $nestedResourceNames
+     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
+     * @param list<ResourceAction> $actions
      */
-    private static function schemaRoute(string $table, Closure $schema, array $nestedResourceNames): RouteInstance
+    private static function schemaRoute(string $table, Closure $schema, array $nestedResourceNames, array $resourcePermissions, array $actions): RouteInstance
     {
-        return Route::get('/_schema', function () use ($table, $schema, $nestedResourceNames) {
+        return Route::get('/_schema', function () use ($table, $schema, $nestedResourceNames, $resourcePermissions, $actions) {
+            $permissions = [];
+
+            foreach (['list', 'get', 'create', 'update', 'delete'] as $key) {
+                if (isset($resourcePermissions[$key])) {
+                    $permissions[$key] = $resourcePermissions[$key];
+                }
+            }
+
+            foreach ($actions as $action) {
+                if ($action->permission !== null) {
+                    $key = strtolower($action->method) . '-' . Str::slug(str_replace(['{', '}', '/'], ['', '', '-'], $action->path));
+                    $permissions[$key] = $action->permission;
+                }
+            }
+
             return response()->json([
                 'resource' => $table,
                 'resources' => $nestedResourceNames,
                 'schema' => $schema(),
+                'permissions' => $permissions,
             ]);
         });
     }

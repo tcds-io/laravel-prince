@@ -23,6 +23,37 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     }
 
     #[Test]
+    public function schema_includes_crud_permissions(): void
+    {
+        $response = $this->getJson('/invoices/_schema');
+
+        $response->assertOk();
+        $response->assertJsonPath('permissions.list', 'model:list');
+        $response->assertJsonPath('permissions.get', 'model:get');
+        $response->assertJsonPath('permissions.create', 'model:create');
+        $response->assertJsonPath('permissions.update', 'model:update');
+        $response->assertJsonPath('permissions.delete', 'model:delete');
+    }
+
+    #[Test]
+    public function schema_omits_permissions_for_disabled_endpoints(): void
+    {
+        ModelResource::of(TestInvoice::class, userPermissions: fn() => [], resourcePermissions: [
+            'list' => 'model:list',
+            'get'  => 'model:get',
+        ])->routes();
+
+        $response = $this->getJson('/invoices/_schema');
+
+        $response->assertOk();
+        $response->assertJsonPath('permissions.list', 'model:list');
+        $response->assertJsonPath('permissions.get', 'model:get');
+        $response->assertJsonMissingPath('permissions.create');
+        $response->assertJsonMissingPath('permissions.update');
+        $response->assertJsonMissingPath('permissions.delete');
+    }
+
+    #[Test]
     public function schema_is_always_accessible_regardless_of_permissions(): void
     {
         ModelResource::of(TestInvoice::class, userPermissions: fn() => [])->routes();
