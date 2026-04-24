@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Test\Tcds\Io\Prince\Feature;
 
 use PHPUnit\Framework\Attributes\Test;
+use Tcds\Io\Prince\ModelResource;
+use Tcds\Io\Prince\ModelResourceBuilder;
 
 class ModelResourceListTest extends ModelResourceTestCase
 {
@@ -72,6 +74,43 @@ class ModelResourceListTest extends ModelResourceTestCase
 
         $response->assertOk();
         $response->assertJsonPath('meta.per_page', 100);
+    }
+
+    #[Test]
+    public function list_respects_custom_max_limit_set_on_builder(): void
+    {
+        ModelResourceBuilder::create(maxLimit: 5)
+            ->resource(TestInvoice::class)
+            ->routes();
+
+        $response = $this->getJson('/invoices?limit=200');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.per_page', 5);
+    }
+
+    #[Test]
+    public function list_respects_per_resource_max_limit_over_builder_default(): void
+    {
+        ModelResourceBuilder::create(maxLimit: 50)
+            ->resource(TestInvoice::class, maxLimit: 10)
+            ->routes();
+
+        $response = $this->getJson('/invoices?limit=200');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.per_page', 10);
+    }
+
+    #[Test]
+    public function list_respects_max_limit_set_directly_on_model_resource(): void
+    {
+        ModelResource::of(TestInvoice::class, maxLimit: 20)->routes();
+
+        $response = $this->getJson('/invoices?limit=200');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.per_page', 20);
     }
 
     #[Test]

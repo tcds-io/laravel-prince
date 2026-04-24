@@ -30,8 +30,11 @@ final class ModelResourceBuilder
     /** @param Closure(): list<Permission> $userPermissions */
     private Closure $userPermissions;
 
-    private function __construct()
+    private int $maxLimit;
+
+    private function __construct(int $maxLimit = 100)
     {
+        $this->maxLimit = $maxLimit;
         $this->userPermissions = fn() => [
             'default:model.read',
             'default:model.create',
@@ -40,9 +43,9 @@ final class ModelResourceBuilder
         ];
     }
 
-    public static function create(): self
+    public static function create(int $maxLimit = 100): self
     {
-        return new self();
+        return new self($maxLimit);
     }
 
     /**
@@ -71,6 +74,7 @@ final class ModelResourceBuilder
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions Maps each action to the permission string it requires
      * @param list<ResourceAction> $actions Extra routes attached to this resource
      * @param array<string, class-string> $events Lifecycle event overrides — merged with defaults (creating, created, updating, updated, deleting, deleted)
+     * @param int|null $maxLimit Maximum page size for this resource — overrides the builder default when set
      */
     public function resource(
         string $model,
@@ -86,8 +90,9 @@ final class ModelResourceBuilder
         ],
         array $actions = [],
         array $events = [],
+        ?int $maxLimit = null,
     ): self {
-        return $this->addResource(model: $model, resources: $resources, globalSearch: $globalSearch, segment: $segment, foreignKey: $foreignKey, resourcePermissions: $resourcePermissions, actions: $actions, events: $events);
+        return $this->addResource(model: $model, resources: $resources, globalSearch: $globalSearch, segment: $segment, foreignKey: $foreignKey, resourcePermissions: $resourcePermissions, actions: $actions, events: $events, maxLimit: $maxLimit);
     }
 
     /**
@@ -99,6 +104,7 @@ final class ModelResourceBuilder
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param list<ResourceAction> $actions
      * @param array<string, class-string> $events
+     * @param int|null $maxLimit Maximum page size for this resource — overrides the builder default when set
      */
     public function hasMany(
         string $model,
@@ -113,8 +119,9 @@ final class ModelResourceBuilder
         ],
         array $actions = [],
         array $events = [],
+        ?int $maxLimit = null,
     ): self {
-        return $this->addResource(model: $model, segment: $segment, foreignKey: $foreignKey, embed: $embed, resourcePermissions: $resourcePermissions, actions: $actions, events: $events, belongsTo: false);
+        return $this->addResource(model: $model, segment: $segment, foreignKey: $foreignKey, embed: $embed, resourcePermissions: $resourcePermissions, actions: $actions, events: $events, belongsTo: false, maxLimit: $maxLimit);
     }
 
     /**
@@ -125,6 +132,7 @@ final class ModelResourceBuilder
      * @param class-string<Model> $model
      * @param string|null $column Column on the parent model holding the FK (defaults to {singular_related_table}_id)
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
+     * @param int|null $maxLimit Maximum page size for this resource — overrides the builder default when set
      */
     public function belongsTo(
         string $model,
@@ -137,8 +145,9 @@ final class ModelResourceBuilder
             'update' => 'default:model.update',
             'delete' => 'default:model.delete',
         ],
+        ?int $maxLimit = null,
     ): self {
-        return $this->addResource(model: $model, segment: $segment, foreignKey: $column, embed: $embed, resourcePermissions: $resourcePermissions, belongsTo: true);
+        return $this->addResource(model: $model, segment: $segment, foreignKey: $column, embed: $embed, resourcePermissions: $resourcePermissions, belongsTo: true, maxLimit: $maxLimit);
     }
 
     /**
@@ -147,6 +156,7 @@ final class ModelResourceBuilder
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param list<ResourceAction> $actions
      * @param array<string, class-string> $events
+     * @param int|null $maxLimit Resource-specific override; falls back to the builder default when null
      */
     private function addResource(
         string $model,
@@ -164,8 +174,9 @@ final class ModelResourceBuilder
         array $actions = [],
         array $events = [],
         bool $belongsTo = false,
+        ?int $maxLimit = null,
     ): self {
-        $nestedBuilder = (new self())->userPermissions($this->userPermissions);
+        $nestedBuilder = (new self($this->maxLimit))->userPermissions($this->userPermissions);
 
         if ($resources !== null) {
             $resources($nestedBuilder);
@@ -193,6 +204,7 @@ final class ModelResourceBuilder
             embed: $embed,
             actions: $actions,
             events: $events,
+            maxLimit: $maxLimit ?? $this->maxLimit,
         );
 
         $this->entries[] = ['resource' => $resource, 'foreignKey' => $foreignKey];

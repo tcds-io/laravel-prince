@@ -140,6 +140,18 @@ GET /invoices?limit=25
 GET /invoices?limit=25&page=2
 ```
 
+The maximum is configurable — set a builder-level default or override it per resource:
+
+```php
+// All resources in this builder cap at 50
+ModelResourceBuilder::create(maxLimit: 50)
+    ->resource(Invoice::class)
+    ->resource(Product::class, maxLimit: 10)  // this one caps at 10
+    ->routes();
+```
+
+Values above `maxLimit` are silently clamped to it.
+
 ---
 
 ## Batch operations
