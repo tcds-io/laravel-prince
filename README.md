@@ -6,7 +6,8 @@
 Turn any Eloquent model into a fully working REST API — no controllers, no form requests, no manual routes.
 
 ```php
-ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
+ModelResourceBuilder::create()
+    ->userPermissions(fn() => $user->permissions)
     ->resource(Invoice::class)
     ->resource(Product::class)
     ->routes();
@@ -18,14 +19,16 @@ ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
 
 For every registered model the following routes are created automatically, using the model's `$table` as the URL segment:
 
-| Method   | Path                  | Action                              |
-|----------|-----------------------|-------------------------------------|
-| `GET`    | `/invoices`           | Paginated list                      |
-| `GET`    | `/invoices/_schema`   | Column schema + nested resource names |
-| `GET`    | `/invoices/{id}`      | Single record (+ embedded nested lists) |
-| `POST`   | `/invoices`           | Create                              |
-| `PATCH`  | `/invoices/{id}`      | Update                              |
-| `DELETE` | `/invoices/{id}`      | Delete                              |
+| Method    | Path                  | Action                                     |
+|-----------|-----------------------|--------------------------------------------|
+| `GET`     | `/invoices`           | Paginated list                             |
+| `GET`     | `/invoices/_schema`   | Column schema, nested resources, permissions |
+| `GET`     | `/invoices/{id}`      | Single record (+ embedded nested lists)    |
+| `POST`    | `/invoices`           | Create one — or batch-create many          |
+| `PATCH`   | `/invoices/{id}`      | Update one                                 |
+| `PATCH`   | `/invoices`           | Batch-update many                          |
+| `DELETE`  | `/invoices/{id}`      | Delete one                                 |
+| `DELETE`  | `/invoices`           | Batch-delete many                          |
 
 And when global search is enabled:
 
@@ -53,7 +56,8 @@ Register your resources inside `routes/api.php`:
 use Tcds\Io\Prince\ModelResourceBuilder;
 
 Route::prefix('/api/backoffice')->group(function () {
-    ModelResourceBuilder::create(userPermissions: fn() => $request->user()->permissions)
+    ModelResourceBuilder::create()
+        ->userPermissions(fn() => $request->user()->permissions)
         ->resource(Invoice::class, globalSearch: true)
         ->resource(Product::class, globalSearch: true)
         ->routes();
@@ -69,7 +73,8 @@ The package reads each model's `$table` and `$casts` properties to determine rou
 Register sub-resources via a callback. Nested routes are scoped to the parent automatically, and the parent's FK is inferred from the table name (`invoice_id` for `invoices`):
 
 ```php
-ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
+ModelResourceBuilder::create()
+    ->userPermissions(fn() => $user->permissions)
     ->resource(
         model: Invoice::class,
         resources: fn(ModelResourceBuilder $b) => $b
@@ -137,6 +142,91 @@ GET /invoices?limit=25&page=2
 
 ---
 
+## Batch operations
+
+All three write endpoints support a batch mode alongside their single-record form. Every batch request is wrapped in a database transaction — if any record fails, the whole operation is rolled back.
+
+### Batch create
+
+Send a `{"data": [...]}` body (an object with a single `data` array key) to create multiple records in one request. Returns the IDs of all created records:
+
+```
+POST /invoices
+{"data": [{"title": "Invoice A", "amount": 100}, {"title": "Invoice B", "amount": 200}]}
+
+→ 200 {"data": [{"id": 1}, {"id": 2}]}
+```
+
+A plain object body (no `data` wrapper, or `data` alongside other keys) is treated as a single-record create as usual:
+
+```
+POST /invoices
+{"title": "Invoice A", "amount": 100}
+
+→ 200 {"id": 1}
+```
+
+### Batch update
+
+`PATCH /invoices` with a `{"data": [...]}` body, where each item must include `id` alongside the fields to update. Returns `204 No Content`. Returns `404` if any ID is not found (and rolls back all changes):
+
+```
+PATCH /invoices
+{"data": [{"id": 1, "title": "Updated"}, {"id": 2, "amount": 300}]}
+
+→ 204
+```
+
+### Batch delete
+
+`DELETE /invoices` with a `{"data": [id, ...]}` body. Returns `204 No Content`. Returns `404` if any ID is not found (and rolls back all deletions):
+
+```
+DELETE /invoices
+{"data": [1, 2, 3]}
+
+→ 204
+```
+
+---
+
+## Schema
+
+`GET /invoices/_schema` returns the resource's column schema, registered nested resource names, and the permissions the **current user** holds for this resource. The `/_schema` endpoint is always accessible regardless of permission settings — so clients can always discover the resource shape.
+
+```json
+{
+  "resource": "invoices",
+  "schema": [
+    { "name": "id",         "type": "integer"  },
+    { "name": "title",      "type": "text"     },
+    { "name": "amount",     "type": "number"   },
+    { "name": "created_at", "type": "datetime" },
+    { "name": "updated_at", "type": "datetime" }
+  ],
+  "resources": ["items"],
+  "permissions": {
+    "list":   "invoices:read",
+    "get":    "invoices:read",
+    "create": "invoices:write",
+    "update": "invoices:write",
+    "delete": "invoices:delete"
+  }
+}
+```
+
+Only permissions the current user actually holds appear in the map — so a read-only user sees only `list` and `get`. Endpoints with `'public'` permission are always included. Extra [action](#actions) permissions appear under slug-formatted keys:
+
+```json
+"permissions": {
+  "list":          "invoices:read",
+  "post-import":   "invoices:write",
+  "get-id-preview":"invoices:read"
+}
+```
+
+---
+
 ## Filtering
 
 ### Full-text search
@@ -179,7 +269,8 @@ GET /invoices?status=active        → exact match (also works for enums)
 Opt any resource into cross-resource full-text search with `globalSearch: true`. A single `GET /search?q=value` endpoint is registered covering all opted-in resources:
 
 ```php
-ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
+ModelResourceBuilder::create()
+    ->userPermissions(fn() => $user->permissions)
     ->resource(Invoice::class, globalSearch: true)
     ->resource(Product::class, globalSearch: true)
     ->resource(Customer::class)          // excluded from search
@@ -208,10 +299,11 @@ Each result has `id`, `description` (first matching text column), `resource` (ta
 
 ### User permissions
 
-A closure returning the permissions the current user holds. Evaluated per request — so it runs after authentication middleware, can read the request, and supports any auth strategy. Shared across all resources in the builder — pass once, applied everywhere:
+A closure returning the permissions the current user holds. Evaluated per request — so it runs after authentication middleware, can read the request, and supports any auth strategy. Shared across all resources in the builder — set once, applied everywhere:
 
 ```php
-ModelResourceBuilder::create(userPermissions: fn() => $request->user()->permissions)
+ModelResourceBuilder::create()
+    ->userPermissions(fn() => $request->user()->permissions)
     ->resource(Invoice::class)
     ->resource(Product::class)
     ->routes();
@@ -243,7 +335,8 @@ The permission each action _requires_. Defaults to the strings below; override p
 | `delete` | `default:model.delete`         |
 
 ```php
-ModelResourceBuilder::create(userPermissions: fn() => Auth::user()?->permissions ?? [])
+ModelResourceBuilder::create()
+    ->userPermissions(fn() => Auth::user()?->permissions ?? [])
     ->resource(
         model: Invoice::class,
         resourcePermissions: [
@@ -267,11 +360,10 @@ To disable an endpoint entirely, simply **omit its key** from `resourcePermissio
 
 > **Reserved word:** `'public'` must not be used as an actual permission name in your application. It is intercepted by the library before any user permission check.
 
-The `/_schema` endpoint is always registered regardless of permission settings, so clients can always discover the resource shape.
-
 ```php
 // Read-only resource: anyone can list/get, create/update/delete are not registered
-ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
+ModelResourceBuilder::create()
+    ->userPermissions(fn() => $user->permissions)
     ->resource(
         model: Product::class,
         resourcePermissions: [
@@ -324,7 +416,8 @@ The `action` must be an **invokable class** (a class with `__invoke`). Laravel's
 ```php
 use Tcds\Io\Prince\ResourceAction;
 
-ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
+ModelResourceBuilder::create()
+    ->userPermissions(fn() => $user->permissions)
     ->resource(
         model: Invoice::class,
         resourcePermissions: [
@@ -438,7 +531,8 @@ class InvoiceCreating implements MutableDataEvent
 Override the URL segment with `segment` when you want a different path than the table name:
 
 ```php
-ModelResourceBuilder::create(userPermissions: fn() => $user->permissions)
+ModelResourceBuilder::create()
+    ->userPermissions(fn() => $user->permissions)
     ->resource(model: Invoice::class, segment: 'bills')
     ->routes();
 // Routes registered at /bills/... — table name remains invoices in meta/schema
