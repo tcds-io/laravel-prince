@@ -28,8 +28,7 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
         $response = $this->getJson('/invoices/_schema');
 
         $response->assertOk();
-        $response->assertJsonPath('permissions.list', 'model:list');
-        $response->assertJsonPath('permissions.get', 'model:get');
+        $response->assertJsonPath('permissions.read', 'model:read');
         $response->assertJsonPath('permissions.create', 'model:create');
         $response->assertJsonPath('permissions.update', 'model:update');
         $response->assertJsonPath('permissions.delete', 'model:delete');
@@ -38,16 +37,14 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     #[Test]
     public function schema_omits_permissions_for_disabled_endpoints(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:list', 'model:get'], resourcePermissions: [
-            'list' => 'model:list',
-            'get'  => 'model:get',
+        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:read'], resourcePermissions: [
+            'read' => 'model:read',
         ])->routes();
 
         $response = $this->getJson('/invoices/_schema');
 
         $response->assertOk();
-        $response->assertJsonPath('permissions.list', 'model:list');
-        $response->assertJsonPath('permissions.get', 'model:get');
+        $response->assertJsonPath('permissions.read', 'model:read');
         $response->assertJsonMissingPath('permissions.create');
         $response->assertJsonMissingPath('permissions.update');
         $response->assertJsonMissingPath('permissions.delete');
@@ -56,13 +53,12 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     #[Test]
     public function schema_omits_permissions_the_user_does_not_hold(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:list'])->routes();
+        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:read'])->routes();
 
         $response = $this->getJson('/invoices/_schema');
 
         $response->assertOk();
-        $response->assertJsonPath('permissions.list', 'model:list');
-        $response->assertJsonMissingPath('permissions.get');
+        $response->assertJsonPath('permissions.read', 'model:read');
         $response->assertJsonMissingPath('permissions.create');
         $response->assertJsonMissingPath('permissions.update');
         $response->assertJsonMissingPath('permissions.delete');

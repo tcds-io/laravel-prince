@@ -14,7 +14,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
         // Routes are registered per-test with specific permissions.
     }
 
-    // --- list ---
+    // --- read (list + get) ---
 
     #[Test]
     public function list_returns_403_when_permission_is_missing(): void
@@ -27,16 +27,14 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     }
 
     #[Test]
-    public function list_is_accessible_with_list_permission(): void
+    public function list_is_accessible_with_read_permission(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:list'])->routes();
+        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:read'])->routes();
 
         $response = $this->getJson('/invoices');
 
         $response->assertOk();
     }
-
-    // --- get ---
 
     #[Test]
     public function get_returns_403_when_permission_is_missing(): void
@@ -50,9 +48,9 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     }
 
     #[Test]
-    public function get_is_accessible_with_get_permission(): void
+    public function get_is_accessible_with_read_permission(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:get'])->routes();
+        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:read'])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
 
         $response = $this->getJson("/invoices/{$invoice->id}");
@@ -136,8 +134,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     public function public_permission_allows_access_without_matching_user_permission(): void
     {
         ModelResource::of(TestInvoice::class, userPermissions: fn() => [], resourcePermissions: [
-            'list' => 'public',
-            'get' => 'public',
+            'read' => 'public',
             'create' => 'model:create',
             'update' => 'model:update',
             'delete' => 'model:delete',
@@ -153,9 +150,8 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function missing_permission_key_does_not_register_route(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete'], resourcePermissions: [
-            'list' => 'model:list',
-            'get' => 'model:get',
+        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:read', 'model:create', 'model:update', 'model:delete'], resourcePermissions: [
+            'read' => 'model:read',
             'update' => 'model:update',
             'delete' => 'model:delete',
         ])->routes();
@@ -168,9 +164,8 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function missing_permission_key_still_allows_other_actions(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete'], resourcePermissions: [
-            'list' => 'model:list',
-            'get' => 'model:get',
+        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:read', 'model:create', 'model:update', 'model:delete'], resourcePermissions: [
+            'read' => 'model:read',
             'update' => 'model:update',
             'delete' => 'model:delete',
         ])->routes();

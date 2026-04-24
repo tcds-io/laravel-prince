@@ -35,7 +35,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param Closure(): list<string> $userPermissions
-     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
+     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param array<int|string, ModelResource> $resources
      * @param list<ResourceAction> $actions
      * @param array<string, class-string> $events
@@ -58,7 +58,7 @@ readonly class ModelResource
      *
      * @param class-string<Model> $model
      * @param (Closure(): list<string>)|null $userPermissions Invoked per request — defaults to granting all standard model permissions
-     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions Maps each action to the permission it requires
+     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions Maps each action to the permission it requires
      * @param array<int|string, ModelResource|class-string<Model>> $resources
      * @param string|null $segment Custom URL segment (defaults to the model's table name)
      * @param bool $globalSearch Whether this resource is included in global search
@@ -69,8 +69,7 @@ readonly class ModelResource
         string $model,
         ?Closure $userPermissions = null,
         array $resourcePermissions = [
-            'list' => 'model:list',
-            'get' => 'model:get',
+            'read' => 'model:read',
             'create' => 'model:create',
             'update' => 'model:update',
             'delete' => 'model:delete',
@@ -83,7 +82,7 @@ readonly class ModelResource
         array $actions = [],
         array $events = [],
     ): self {
-        $userPermissions ??= fn() => ['model:list', 'model:get', 'model:create', 'model:update', 'model:delete'];
+        $userPermissions ??= fn() => ['model:read', 'model:create', 'model:update', 'model:delete'];
 
         $normalizedResources = array_map(function (ModelResource|string $resource): ModelResource {
             return is_string($resource) ? self::of($resource) : $resource;
@@ -190,14 +189,11 @@ readonly class ModelResource
             }
         }
 
-        if (isset($this->resourcePermissions['list'])) {
+        if (isset($this->resourcePermissions['read'])) {
             $route = self::list($this->model, $table, $schema, $constraints);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['list'], $this->userPermissions);
-        }
-
-        if (isset($this->resourcePermissions['get'])) {
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['read'], $this->userPermissions);
             $route = self::get($this->model, $constraints, $nestedEntries);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['get'], $this->userPermissions);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['read'], $this->userPermissions);
         }
 
         if (isset($this->resourcePermissions['create'])) {
@@ -227,7 +223,7 @@ readonly class ModelResource
 
         foreach ($this->resources as $foreignKey => $nestedResource) {
             if ($nestedResource->belongsTo) {
-                if (!isset($nestedResource->resourcePermissions['get']) || !isset($this->resourcePermissions['get'])) {
+                if (!isset($nestedResource->resourcePermissions['read']) || !isset($this->resourcePermissions['read'])) {
                     continue;
                 }
 
@@ -236,7 +232,7 @@ readonly class ModelResource
                 $parentParam = Str::singular($table) . 'Id';
                 $singularPrefix = Str::singular($nestedResource->routePrefix());
                 $parentModel = $this->model;
-                $parentRequiredPermission = $this->resourcePermissions['get'];
+                $parentRequiredPermission = $this->resourcePermissions['read'];
                 $parentUserPermissions = $this->userPermissions;
 
                 $route = Route::get(
@@ -278,7 +274,7 @@ readonly class ModelResource
                         ]);
                     }
                 );
-                self::attachPermissionMiddleware($route, $nestedResource->resourcePermissions['get'], $nestedResource->userPermissions);
+                self::attachPermissionMiddleware($route, $nestedResource->resourcePermissions['read'], $nestedResource->userPermissions);
 
                 continue;
             }
@@ -292,7 +288,7 @@ readonly class ModelResource
                 'param' => $parentParam,
                 'fk' => $foreignKey,
                 'model' => $this->model,
-                'requiredPermission' => $this->resourcePermissions['get'] ?? 'public',
+                'requiredPermission' => $this->resourcePermissions['read'] ?? 'public',
                 'userPermissions' => $this->userPermissions,
             ]];
             $nestedTable = $nestedResource->table();
@@ -339,7 +335,7 @@ readonly class ModelResource
     /**
      * @param Closure(): list<ColumnSchema> $schema
      * @param list<string> $nestedResourceNames
-     * @param array{list?: Permission, get?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
+     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param list<ResourceAction> $actions
      * @param Closure(): list<string> $userPermissions
      */
@@ -349,7 +345,7 @@ readonly class ModelResource
             $granted = ($userPermissions)();
             $permissions = [];
 
-            foreach (['list', 'get', 'create', 'update', 'delete'] as $key) {
+            foreach (['read', 'create', 'update', 'delete'] as $key) {
                 if (isset($resourcePermissions[$key])) {
                     $permission = $resourcePermissions[$key];
                     if ($permission === 'public' || in_array($permission, $granted)) {

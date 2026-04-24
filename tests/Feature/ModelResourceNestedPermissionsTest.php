@@ -9,16 +9,16 @@ use Tcds\Io\Prince\ModelResource;
 
 /**
  * Verifies that nested resource actions are forbidden when the user lacks
- * the required "get" permission on the parent resource.
+ * the required "read" permission on the parent resource.
  */
 class ModelResourceNestedPermissionsTest extends ModelResourceNestedTestCase
 {
-    /** Parent (invoice) has NO model:get permission; nested (item) has full permissions. */
+    /** Parent (invoice) has NO model:read permission; nested (item) has full permissions. */
     protected function registerRoutes(): void
     {
         ModelResource::of(
             TestInvoice::class,
-            userPermissions: fn() => ['model:list', 'model:create', 'model:update', 'model:delete'],
+            userPermissions: fn() => ['model:create', 'model:update', 'model:delete'],
             resources: [ModelResource::of(TestItem::class)],
         )->routes();
     }
@@ -81,7 +81,7 @@ class ModelResourceNestedPermissionsTest extends ModelResourceNestedTestCase
     {
         ModelResource::of(
             TestInvoice::class,
-            userPermissions: fn() => ['model:get', 'model:list', 'model:create', 'model:update', 'model:delete'],
+            userPermissions: fn() => ['model:read', 'model:create', 'model:update', 'model:delete'],
             resources: [ModelResource::of(TestItem::class)],
         )->routes();
 
