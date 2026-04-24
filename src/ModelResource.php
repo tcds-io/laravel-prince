@@ -51,6 +51,7 @@ readonly class ModelResource
         public bool $embed = false,
         private array $actions = [],
         private array $events = [],
+        private int $maxLimit = 100,
     ) {}
 
     /**
@@ -64,6 +65,7 @@ readonly class ModelResource
      * @param bool $globalSearch Whether this resource is included in global search
      * @param list<ResourceAction> $actions Extra routes attached to this resource
      * @param array<string, class-string> $events Lifecycle event overrides — merged with defaults (creating, created, updating, updated, deleting, deleted)
+     * @param int $maxLimit Maximum page size accepted from the ?limit query parameter
      */
     public static function of(
         string $model,
@@ -81,6 +83,7 @@ readonly class ModelResource
         bool $embed = false,
         array $actions = [],
         array $events = [],
+        int $maxLimit = 100,
     ): self {
         $userPermissions ??= fn() => ['model:read', 'model:create', 'model:update', 'model:delete'];
 
@@ -97,7 +100,7 @@ readonly class ModelResource
             'deleted'  => ResourceDeleted::class,
         ], $events);
 
-        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $belongsTo, $embed, $actions, $resolvedEvents);
+        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $belongsTo, $embed, $actions, $resolvedEvents, $maxLimit);
     }
 
     /**
@@ -190,7 +193,7 @@ readonly class ModelResource
         }
 
         if (isset($this->resourcePermissions['read'])) {
-            $route = self::list($this->model, $table, $schema, $constraints);
+            $route = self::list($this->model, $table, $schema, $constraints, $this->maxLimit);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['read'], $this->userPermissions);
             $route = self::get($this->model, $constraints, $nestedEntries);
             self::attachPermissionMiddleware($route, $this->resourcePermissions['read'], $this->userPermissions);
@@ -304,10 +307,10 @@ readonly class ModelResource
      * @param Closure(): list<ColumnSchema> $schema
      * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
      */
-    private static function list(string $model, string $table, Closure $schema, array $constraints): RouteInstance
+    private static function list(string $model, string $table, Closure $schema, array $constraints, int $maxLimit): RouteInstance
     {
-        return Route::get('/', function (Request $request) use ($model, $table, $schema, $constraints) {
-            $paginate = ModelResourceQuery::paginate($model, $constraints, $schema(), $request);
+        return Route::get('/', function (Request $request) use ($model, $table, $schema, $constraints, $maxLimit) {
+            $paginate = ModelResourceQuery::paginate($model, $constraints, $schema(), $request, $maxLimit);
 
             $basePath = rtrim($request->getPathInfo(), '/');
             /** @var list<array{id: int|string, ...}> $rawData */

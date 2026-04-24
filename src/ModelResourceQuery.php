@@ -20,7 +20,7 @@ readonly class ModelResourceQuery
      * @param list<ColumnSchema> $schema
      * @return array<string, mixed>
      */
-    public static function paginate(string $model, array $constraints, array $schema, Request $request): array
+    public static function paginate(string $model, array $constraints, array $schema, Request $request, int $maxLimit = 100): array
     {
         $query = $model::query()->withoutEagerLoads();
 
@@ -80,7 +80,7 @@ readonly class ModelResourceQuery
         }
 
         $limitParam = $request->input('limit');
-        $limit = min(is_numeric($limitParam) ? (int) $limitParam : 10, 100);
+        $limit = min(is_numeric($limitParam) ? (int) $limitParam : 10, $maxLimit);
 
         /** @var array<string, mixed> */
         return $query->paginate(perPage: $limit)->toArray();
