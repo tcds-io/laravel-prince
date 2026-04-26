@@ -222,8 +222,8 @@ final class ModelResourceBuilder
     }
 
     /**
-     * Registers all resource routes. If any resources were added with globalSearch: true,
-     * also registers GET /search. Must be called after all resource() calls.
+     * Registers all resource routes, a global GET /_schema, and (if opted in) GET /search.
+     * Must be called after all resource() calls.
      */
     public function routes(): void
     {
@@ -239,9 +239,14 @@ final class ModelResourceBuilder
             $seen[$prefix] = $resource->model;
         }
 
+        $schemaEntries = [];
+
         foreach ($this->entries as ['resource' => $resource]) {
             $resource->routes();
+            $schemaEntries[] = $resource->schemaEntry();
         }
+
+        ModelResourceGlobalSchema::of($schemaEntries)->routes();
 
         if ($this->searchEntries !== []) {
             ModelResourceGlobalSearch::of($this->searchEntries)->routes();
