@@ -336,6 +336,57 @@ readonly class ModelResource
     }
 
     /**
+     * Returns the data needed to include this resource in the global /_schema route.
+     *
+     * @return array{table: string, schema: Closure(): list<ColumnSchema>, resources: list<string>, resourcePermissions: array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission}, actions: list<ResourceAction>, userPermissions: Closure(): list<string>}
+     */
+    public function schemaEntry(): array
+    {
+        $table = $this->table();
+
+        return [
+            'table'               => $table,
+            'schema'              => fn(): array => $this->visibleSchema($table),
+            'resources'           => array_values(array_map(fn(ModelResource $r) => $r->routePrefix(), $this->resources)),
+            'resourcePermissions' => $this->resourcePermissions,
+            'actions'             => $this->actions,
+            'userPermissions'     => $this->userPermissions,
+        ];
+    }
+
+    /**
+     * Builds the permissions map for a schema response, filtering by what the current user holds.
+     *
+     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
+     * @param list<ResourceAction> $actions
+     * @param Closure(): list<string> $userPermissions
+     * @return array<string, string>
+     */
+    public static function buildPermissionsMap(array $resourcePermissions, array $actions, Closure $userPermissions): array
+    {
+        $granted = ($userPermissions)();
+        $permissions = [];
+
+        foreach (['read', 'create', 'update', 'delete'] as $key) {
+            if (isset($resourcePermissions[$key])) {
+                $permission = $resourcePermissions[$key];
+                if ($permission === 'public' || in_array($permission, $granted)) {
+                    $permissions[$key] = $permission;
+                }
+            }
+        }
+
+        foreach ($actions as $action) {
+            if ($action->permission !== null && ($action->permission === 'public' || in_array($action->permission, $granted))) {
+                $key = strtolower($action->method) . '-' . Str::slug(str_replace(['{', '}', '/'], ['', '', '-'], $action->path));
+                $permissions[$key] = $action->permission;
+            }
+        }
+
+        return $permissions;
+    }
+
+    /**
      * @param Closure(): list<ColumnSchema> $schema
      * @param list<string> $nestedResourceNames
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
@@ -345,30 +396,11 @@ readonly class ModelResource
     private static function schemaRoute(string $table, Closure $schema, array $nestedResourceNames, array $resourcePermissions, array $actions, Closure $userPermissions): RouteInstance
     {
         return Route::get('/_schema', function () use ($table, $schema, $nestedResourceNames, $resourcePermissions, $actions, $userPermissions) {
-            $granted = ($userPermissions)();
-            $permissions = [];
-
-            foreach (['read', 'create', 'update', 'delete'] as $key) {
-                if (isset($resourcePermissions[$key])) {
-                    $permission = $resourcePermissions[$key];
-                    if ($permission === 'public' || in_array($permission, $granted)) {
-                        $permissions[$key] = $permission;
-                    }
-                }
-            }
-
-            foreach ($actions as $action) {
-                if ($action->permission !== null && ($action->permission === 'public' || in_array($action->permission, $granted))) {
-                    $key = strtolower($action->method) . '-' . Str::slug(str_replace(['{', '}', '/'], ['', '', '-'], $action->path));
-                    $permissions[$key] = $action->permission;
-                }
-            }
-
             return response()->json([
-                'resource' => $table,
-                'resources' => $nestedResourceNames,
-                'schema' => $schema(),
-                'permissions' => $permissions,
+                'resource'    => $table,
+                'resources'   => $nestedResourceNames,
+                'schema'      => $schema(),
+                'permissions' => self::buildPermissionsMap($resourcePermissions, $actions, $userPermissions),
             ]);
         });
     }

@@ -30,6 +30,12 @@ For every registered model the following routes are created automatically, using
 | `DELETE`  | `/invoices/{id}`      | Delete one                                 |
 | `DELETE`  | `/invoices`           | Batch-delete many                          |
 
+Plus one route at the builder group level:
+
+| Method | Path       | Action                                                        |
+|--------|------------|---------------------------------------------------------------|
+| `GET`  | `/_schema` | Schema for all registered resources                          |
+
 And when global search is enabled:
 
 | Method | Path      | Action                                                   |
@@ -204,7 +210,38 @@ DELETE /invoices
 
 ## Schema
 
-`GET /invoices/_schema` returns the resource's column schema, registered nested resource names, and the permissions the **current user** holds for this resource. The `/_schema` endpoint is always accessible regardless of permission settings — so clients can always discover the resource shape.
+### Per-resource schema
+
+`GET /invoices/_schema` returns the column schema, registered nested resource names, and the permissions the **current user** holds for that resource. Always accessible regardless of permission settings.
+
+### Global schema
+
+`GET /_schema` (registered at the builder group level) returns the same information for **all registered resources** in one request:
+
+```json
+{
+  "data": [
+    {
+      "resource": "invoices",
+      "schema": [...],
+      "resources": ["items"],
+      "permissions": { "read": "invoices:read", "create": "invoices:write" }
+    },
+    {
+      "resource": "products",
+      "schema": [...],
+      "resources": [],
+      "permissions": { "read": "products:read" }
+    }
+  ]
+}
+```
+
+Always accessible regardless of permissions, and like the per-resource schema, only shows permissions the current user holds.
+
+### Schema response shape
+
+The per-resource `/_schema` response (used directly or as an element in the global `/_schema`) looks like:
 
 ```json
 {
