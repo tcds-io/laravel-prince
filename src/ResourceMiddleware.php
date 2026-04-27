@@ -14,19 +14,19 @@ readonly class ResourceMiddleware
     private string $key;
 
     /**
-     * @param Closure(): list<string> $userPermissions
+     * @param Closure $authorizer
      */
-    private function __construct(private string $action, private Closure $userPermissions)
+    private function __construct(private string $permission, private Closure $authorizer)
     {
         $this->key = 'prince_middleware_' . uniqid('', true);
     }
 
     /**
-     * @param Closure(): list<string> $userPermissions
+     * @param Closure $authorizer
      */
-    public static function of(string $action, Closure $userPermissions): self
+    public static function of(string $permission, Closure $authorizer): self
     {
-        return new self($action, $userPermissions);
+        return new self($permission, $authorizer);
     }
 
     public function __toString(): string
@@ -41,8 +41,13 @@ readonly class ResourceMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($this->action !== 'public' && !in_array($this->action, ($this->userPermissions)())) {
-            throw new AccessDeniedHttpException();
+        if ($this->permission !== 'public') {
+            $context = new AuthorizerContext($request->method(), $request->getPathInfo(), $this->permission);
+            // RequestContext is bound as an optional injectable; closures that don't
+            // declare it (e.g. fn(AuthService $a) => ...) simply won't receive it.
+            if (!app()->call($this->authorizer, [AuthorizerContext::class => $context])) {
+                throw new AccessDeniedHttpException();
+            }
         }
 
         return $next($request);

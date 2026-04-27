@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Test\Tcds\Io\Prince\Feature;
 
 use PHPUnit\Framework\Attributes\Test;
+use Tcds\Io\Prince\AuthorizerContext;
 use Tcds\Io\Prince\ModelResource;
 
 class ModelResourceSchemaTest extends ModelResourceTestCase
@@ -37,7 +38,7 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     #[Test]
     public function schema_omits_permissions_for_disabled_endpoints(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:read'], resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', resourcePermissions: [
             'read' => 'model:read',
         ])->routes();
 
@@ -53,7 +54,7 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     #[Test]
     public function schema_omits_permissions_the_user_does_not_hold(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => ['model:read'])->routes();
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read')->routes();
 
         $response = $this->getJson('/invoices/_schema');
 
@@ -67,7 +68,7 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     #[Test]
     public function schema_is_always_accessible_regardless_of_permissions(): void
     {
-        ModelResource::of(TestInvoice::class, userPermissions: fn() => [])->routes();
+        ModelResource::of(TestInvoice::class, authorizer: fn() => false)->routes();
 
         $response = $this->getJson('/invoices/_schema');
 

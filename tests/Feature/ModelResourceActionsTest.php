@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Test\Tcds\Io\Prince\Feature;
 
+use Tcds\Io\Prince\AuthorizerContext;
 use Tcds\Io\Prince\ModelResource;
 use Tcds\Io\Prince\ResourceAction;
 use Test\Tcds\Io\Prince\Stubs\Actions\ExportInvoicesAction;
@@ -31,7 +32,7 @@ class ModelResourceActionsTest extends ModelResourceTestCase
                     permission: 'invoices:send',
                 ),
             ],
-            userPermissions: fn() => ['model:read', 'model:create', 'model:update', 'model:delete', 'invoices:send'],
+            authorizer: fn(AuthorizerContext $context) => in_array($context->permission, ['model:read', 'model:create', 'model:update', 'model:delete', 'invoices:send']),
         )->routes();
     }
 
@@ -80,7 +81,7 @@ class ModelResourceActionsTest extends ModelResourceTestCase
                     permission: 'invoices:send',
                 ),
             ],
-            userPermissions: fn() => [], // no permissions
+            authorizer: fn() => false,
             resourcePermissions: [
                 'read' => 'model:read',
                 'create' => 'model:create',

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Test\Tcds\Io\Prince\Feature;
 
 use PHPUnit\Framework\Attributes\Test;
+use Tcds\Io\Prince\AuthorizerContext;
 use Tcds\Io\Prince\ModelResourceBuilder;
 use Tcds\Io\Prince\ResourceAction;
 
@@ -12,7 +13,7 @@ class ModelResourceSchemaActionsTest extends ModelResourceTestCase
 {
     protected function registerRoutes(): void
     {
-        ModelResourceBuilder::create()->userPermissions(fn() => ['invoices:import', 'invoices:preview'])
+        ModelResourceBuilder::create()->authorizer(fn(AuthorizerContext $context) => in_array($context->permission, ['invoices:import', 'invoices:preview']))
             ->resource(TestInvoice::class, actions: [
                 ResourceAction::post('/import', TestSchemaImportAction::class, permission: 'invoices:import'),
                 ResourceAction::get('/{id}/preview', TestSchemaImportAction::class, permission: 'invoices:preview'),

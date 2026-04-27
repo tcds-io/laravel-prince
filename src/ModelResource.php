@@ -34,7 +34,7 @@ readonly class ModelResource
 {
     /**
      * @param class-string<Model> $model
-     * @param Closure(): list<string> $userPermissions
+     * @param Closure $authorizer
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param array<int|string, ModelResource> $resources
      * @param list<ResourceAction> $actions
@@ -42,7 +42,7 @@ readonly class ModelResource
      */
     private function __construct(
         public readonly string $model,
-        private Closure $userPermissions,
+        private Closure $authorizer,
         private array $resourcePermissions,
         private array $resources,
         private ?string $segment,
@@ -58,7 +58,7 @@ readonly class ModelResource
      * Builds a ModelResource definition. Call ->routes() on the result to register routes.
      *
      * @param class-string<Model> $model
-     * @param (Closure(): list<string>)|null $userPermissions Invoked per request — defaults to granting all standard model permissions
+     * @param Closure|null $authorizer Invoked per request — all parameters are IoC-resolved; declare RequestContext to receive method/path/permission. Defaults to granting all standard model permissions.
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions Maps each action to the permission it requires
      * @param array<int|string, ModelResource|class-string<Model>> $resources
      * @param string|null $segment Custom URL segment (defaults to the model's table name)
@@ -69,7 +69,7 @@ readonly class ModelResource
      */
     public static function of(
         string $model,
-        ?Closure $userPermissions = null,
+        ?Closure $authorizer = null,
         array $resourcePermissions = [
             'read' => 'model:read',
             'create' => 'model:create',
@@ -85,7 +85,7 @@ readonly class ModelResource
         array $events = [],
         int $maxLimit = 100,
     ): self {
-        $userPermissions ??= fn() => ['model:read', 'model:create', 'model:update', 'model:delete'];
+        $authorizer ??= fn(AuthorizerContext $context) => in_array($context->permission, ['model:read', 'model:create', 'model:update', 'model:delete']);
 
         $normalizedResources = array_map(function (ModelResource|string $resource): ModelResource {
             return is_string($resource) ? self::of($resource) : $resource;
@@ -100,7 +100,7 @@ readonly class ModelResource
             'deleted'  => ResourceDeleted::class,
         ], $events);
 
-        return new self($model, $userPermissions, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $belongsTo, $embed, $actions, $resolvedEvents, $maxLimit);
+        return new self($model, $authorizer, $resourcePermissions, $normalizedResources, $segment, $globalSearch, $belongsTo, $embed, $actions, $resolvedEvents, $maxLimit);
     }
 
     /**
@@ -141,7 +141,7 @@ readonly class ModelResource
     }
 
     /**
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, authorizer: Closure}> $constraints
      */
     private function registerInGroup(string $table, array $constraints): void
     {
@@ -184,7 +184,7 @@ readonly class ModelResource
         // /_schema is always registered so clients can discover the resource shape.
         // It must be registered before /{resourceId} to avoid being captured as an ID.
         // Collection actions (no {id} in path) must also precede /{resourceId} for the same reason.
-        self::schemaRoute($table, $schema, $nestedResourceNames, $this->resourcePermissions, $this->actions, $this->userPermissions);
+        self::schemaRoute($table, $schema, $nestedResourceNames, $this->resourcePermissions, $this->actions, $this->authorizer);
 
         foreach ($this->actions as $action) {
             if (!$action->isItemAction()) {
@@ -194,28 +194,28 @@ readonly class ModelResource
 
         if (isset($this->resourcePermissions['read'])) {
             $route = self::list($this->model, $table, $schema, $constraints, $this->maxLimit);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['read'], $this->userPermissions);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['read'], $this->authorizer);
             $route = self::get($this->model, $constraints, $nestedEntries);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['read'], $this->userPermissions);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['read'], $this->authorizer);
         }
 
         if (isset($this->resourcePermissions['create'])) {
             $route = self::create($this->model, $schema, $constraints, $this->events);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['create'], $this->userPermissions);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['create'], $this->authorizer);
         }
 
         if (isset($this->resourcePermissions['update'])) {
             $route = self::batchUpdate($this->model, $schema, $constraints, $this->events);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['update'], $this->userPermissions);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['update'], $this->authorizer);
             $route = self::update($this->model, $schema, $constraints, $this->events);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['update'], $this->userPermissions);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['update'], $this->authorizer);
         }
 
         if (isset($this->resourcePermissions['delete'])) {
             $route = self::batchDelete($this->model, $constraints, $this->events);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['delete'], $this->userPermissions);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['delete'], $this->authorizer);
             $route = self::delete($this->model, $constraints, $this->events);
-            self::attachPermissionMiddleware($route, $this->resourcePermissions['delete'], $this->userPermissions);
+            self::attachPermissionMiddleware($route, $this->resourcePermissions['delete'], $this->authorizer);
         }
 
         foreach ($this->actions as $action) {
@@ -236,20 +236,20 @@ readonly class ModelResource
                 $singularPrefix = Str::singular($nestedResource->routePrefix());
                 $parentModel = $this->model;
                 $parentRequiredPermission = $this->resourcePermissions['read'];
-                $parentUserPermissions = $this->userPermissions;
+                $parentAuthorizer = $this->authorizer;
 
                 $route = Route::get(
                     '{' . $parentParam . '}/' . $singularPrefix,
-                    function (Request $request) use ($nestedResource, $column, $parentParam, $constraints, $parentModel, $parentRequiredPermission, $parentUserPermissions) {
+                    function (Request $request) use ($nestedResource, $column, $parentParam, $constraints, $parentModel, $parentRequiredPermission, $parentAuthorizer) {
                         // Check outer constraints (grandparent permissions, etc.).
-                        foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                            if ($required !== 'public' && !in_array($required, ($perms)())) {
+                        foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                            if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                                 throw new AccessDeniedHttpException();
                             }
                         }
 
                         // Check parent's own get permission.
-                        if ($parentRequiredPermission !== 'public' && !in_array($parentRequiredPermission, ($parentUserPermissions)())) {
+                        if ($parentRequiredPermission !== 'public' && !app()->call($parentAuthorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $parentRequiredPermission)])) {
                             throw new AccessDeniedHttpException();
                         }
 
@@ -277,7 +277,7 @@ readonly class ModelResource
                         ]);
                     }
                 );
-                self::attachPermissionMiddleware($route, $nestedResource->resourcePermissions['read'], $nestedResource->userPermissions);
+                self::attachPermissionMiddleware($route, $nestedResource->resourcePermissions['read'], $nestedResource->authorizer);
 
                 continue;
             }
@@ -292,7 +292,7 @@ readonly class ModelResource
                 'fk' => $foreignKey,
                 'model' => $this->model,
                 'requiredPermission' => $this->resourcePermissions['read'] ?? 'public',
-                'userPermissions' => $this->userPermissions,
+                'authorizer' => $this->authorizer,
             ]];
             $nestedTable = $nestedResource->table();
 
@@ -305,7 +305,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param Closure(): list<ColumnSchema> $schema
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, authorizer: Closure}> $constraints
      */
     private static function list(string $model, string $table, Closure $schema, array $constraints, int $maxLimit): RouteInstance
     {
@@ -338,7 +338,7 @@ readonly class ModelResource
     /**
      * Returns the data needed to include this resource in the global /_schema route.
      *
-     * @return array{table: string, schema: Closure(): list<ColumnSchema>, resources: list<string>, resourcePermissions: array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission}, actions: list<ResourceAction>, userPermissions: Closure(): list<string>}
+     * @return array{table: string, schema: Closure(): list<ColumnSchema>, resources: list<string>, resourcePermissions: array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission}, actions: list<ResourceAction>, authorizer: Closure}
      */
     public function schemaEntry(): array
     {
@@ -350,36 +350,42 @@ readonly class ModelResource
             'resources'           => array_values(array_map(fn(ModelResource $r) => $r->routePrefix(), $this->resources)),
             'resourcePermissions' => $this->resourcePermissions,
             'actions'             => $this->actions,
-            'userPermissions'     => $this->userPermissions,
+            'authorizer'          => $this->authorizer,
         ];
     }
 
     /**
-     * Builds the permissions map for a schema response, filtering by what the current user holds.
+     * Builds the permissions map for a schema response, filtering by what the authorizer grants.
+     * For each CRUD key a RequestContext is built with the corresponding HTTP method and route prefix.
+     * RequestContext is bound as an optional injectable — authorizers that don't declare it still work.
      *
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param list<ResourceAction> $actions
-     * @param Closure(): list<string> $userPermissions
+     * @param Closure $authorizer
      * @return array<string, string>
      */
-    public static function buildPermissionsMap(array $resourcePermissions, array $actions, Closure $userPermissions): array
+    public static function buildPermissionsMap(string $routePrefix, array $resourcePermissions, array $actions, Closure $authorizer): array
     {
-        $granted = ($userPermissions)();
+        $methodFor = ['read' => 'GET', 'create' => 'POST', 'update' => 'PATCH', 'delete' => 'DELETE'];
         $permissions = [];
 
         foreach (['read', 'create', 'update', 'delete'] as $key) {
             if (isset($resourcePermissions[$key])) {
                 $permission = $resourcePermissions[$key];
-                if ($permission === 'public' || in_array($permission, $granted)) {
+                $context = new AuthorizerContext($methodFor[$key], '/' . $routePrefix, $permission);
+                if ($permission === 'public' || app()->call($authorizer, [AuthorizerContext::class => $context])) {
                     $permissions[$key] = $permission;
                 }
             }
         }
 
         foreach ($actions as $action) {
-            if ($action->permission !== null && ($action->permission === 'public' || in_array($action->permission, $granted))) {
-                $key = strtolower($action->method) . '-' . Str::slug(str_replace(['{', '}', '/'], ['', '', '-'], $action->path));
-                $permissions[$key] = $action->permission;
+            if ($action->permission !== null) {
+                $context = new AuthorizerContext($action->method, '/' . $routePrefix . $action->path, $action->permission);
+                if ($action->permission === 'public' || app()->call($authorizer, [AuthorizerContext::class => $context])) {
+                    $key = strtolower($action->method) . '-' . Str::slug(str_replace(['{', '}', '/'], ['', '', '-'], $action->path));
+                    $permissions[$key] = $action->permission;
+                }
             }
         }
 
@@ -391,23 +397,23 @@ readonly class ModelResource
      * @param list<string> $nestedResourceNames
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param list<ResourceAction> $actions
-     * @param Closure(): list<string> $userPermissions
+     * @param Closure $authorizer
      */
-    private static function schemaRoute(string $table, Closure $schema, array $nestedResourceNames, array $resourcePermissions, array $actions, Closure $userPermissions): RouteInstance
+    private static function schemaRoute(string $table, Closure $schema, array $nestedResourceNames, array $resourcePermissions, array $actions, Closure $authorizer): RouteInstance
     {
-        return Route::get('/_schema', function () use ($table, $schema, $nestedResourceNames, $resourcePermissions, $actions, $userPermissions) {
+        return Route::get('/_schema', function () use ($table, $schema, $nestedResourceNames, $resourcePermissions, $actions, $authorizer) {
             return response()->json([
                 'resource'    => $table,
                 'resources'   => $nestedResourceNames,
                 'schema'      => $schema(),
-                'permissions' => self::buildPermissionsMap($resourcePermissions, $actions, $userPermissions),
+                'permissions' => self::buildPermissionsMap($table, $resourcePermissions, $actions, $authorizer),
             ]);
         });
     }
 
     /**
      * @param class-string<Model> $model
-     * @param array<array{param: string, fk: string, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, requiredPermission: Permission, authorizer: Closure}> $constraints
      * @param list<array{routePrefix: string, embedKey: string, model: class-string<Model>, foreignKey: string, belongsTo: bool, embed: bool}> $nestedEntries
      */
     private static function get(string $model, array $constraints, array $nestedEntries): RouteInstance
@@ -416,8 +422,8 @@ readonly class ModelResource
             $resourceId = self::routeId($request, 'resourceId');
             $query = $model::query()->withoutEagerLoads();
 
-            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if ($required !== 'public' && !in_array($required, ($perms)())) {
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                     throw new AccessDeniedHttpException();
                 }
                 $query->where($fk, self::routeId($request, $param));
@@ -492,7 +498,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param Closure(): list<ColumnSchema> $schema
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, authorizer: Closure}> $constraints
      * @param array<string, class-string> $events
      */
     private static function create(string $model, Closure $schema, array $constraints, array $events): RouteInstance
@@ -501,8 +507,8 @@ readonly class ModelResource
             $columns = array_values(array_filter($schema(), fn(ColumnSchema $col) => $col->name !== 'id'));
 
             $fkData = [];
-            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if ($required !== 'public' && !in_array($required, ($perms)())) {
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                     throw new AccessDeniedHttpException();
                 }
                 $parentId = self::routeId($request, $param);
@@ -559,7 +565,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param Closure(): list<ColumnSchema> $schema
-     * @param array<array{param: string, fk: string, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, requiredPermission: Permission, authorizer: Closure}> $constraints
      * @param array<string, class-string> $events
      */
     private static function update(string $model, Closure $schema, array $constraints, array $events): RouteInstance
@@ -569,8 +575,8 @@ readonly class ModelResource
             $query = $model::query();
             $foreignKeys = [];
 
-            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if ($required !== 'public' && !in_array($required, ($perms)())) {
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                     throw new AccessDeniedHttpException();
                 }
                 $query->where($fk, self::routeId($request, $param));
@@ -604,7 +610,7 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param array<array{param: string, fk: string, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, requiredPermission: Permission, authorizer: Closure}> $constraints
      * @param array<string, class-string> $events
      */
     private static function delete(string $model, array $constraints, array $events): RouteInstance
@@ -613,8 +619,8 @@ readonly class ModelResource
             $resourceId = self::routeId($request, 'resourceId');
             $query = $model::query();
 
-            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if ($required !== 'public' && !in_array($required, ($perms)())) {
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                     throw new AccessDeniedHttpException();
                 }
                 $query->where($fk, self::routeId($request, $param));
@@ -638,7 +644,7 @@ readonly class ModelResource
     /**
      * @param class-string<Model> $model
      * @param Closure(): list<ColumnSchema> $schema
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, authorizer: Closure}> $constraints
      * @param array<string, class-string> $events
      */
     private static function batchUpdate(string $model, Closure $schema, array $constraints, array $events): RouteInstance
@@ -647,8 +653,8 @@ readonly class ModelResource
             $allColumns = $schema();
             $foreignKeys = [];
 
-            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if ($required !== 'public' && !in_array($required, ($perms)())) {
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                     throw new AccessDeniedHttpException();
                 }
                 $foreignKeys[$fk] = self::routeId($request, $param);
@@ -702,7 +708,7 @@ readonly class ModelResource
 
     /**
      * @param class-string<Model> $model
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, authorizer: Closure}> $constraints
      * @param array<string, class-string> $events
      */
     private static function batchDelete(string $model, array $constraints, array $events): RouteInstance
@@ -710,8 +716,8 @@ readonly class ModelResource
         return Route::delete('/', function (Request $request) use ($model, $constraints, $events) {
             $foreignKeys = [];
 
-            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                if ($required !== 'public' && !in_array($required, ($perms)())) {
+            foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                     throw new AccessDeniedHttpException();
                 }
                 $foreignKeys[$fk] = self::routeId($request, $param);
@@ -750,20 +756,20 @@ readonly class ModelResource
      * Collection actions: any parent constraints are validated; the callback receives no implicit
      * arguments beyond what the IoC container can inject (Request, services, etc.).
      *
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: Permission, authorizer: Closure}> $constraints
      */
     private function registerAction(ResourceAction $action, array $constraints): void
     {
         $model = $this->model;
-        $userPermissions = $this->userPermissions;
+        $authorizer = $this->authorizer;
 
         if ($action->isItemAction()) {
             $closure = function (Request $request) use ($model, $action, $constraints) {
                 $id = self::routeId($request, 'id');
                 $query = $model::query();
 
-                foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                    if ($required !== 'public' && !in_array($required, ($perms)())) {
+                foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                    if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                         throw new AccessDeniedHttpException();
                     }
                     $query->where($fk, self::routeId($request, $param));
@@ -778,8 +784,8 @@ readonly class ModelResource
             };
         } else {
             $closure = function (Request $request) use ($action, $constraints) {
-                foreach ($constraints as ['param' => $param, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-                    if ($required !== 'public' && !in_array($required, ($perms)())) {
+                foreach ($constraints as ['param' => $param, 'model' => $parentModel, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                    if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                         throw new AccessDeniedHttpException();
                     }
                     ModelResourceQuery::findOrThrow($parentModel, self::routeId($request, $param));
@@ -799,17 +805,17 @@ readonly class ModelResource
         };
 
         if ($action->permission !== null) {
-            self::attachPermissionMiddleware($route, $action->permission, $userPermissions);
+            self::attachPermissionMiddleware($route, $action->permission, $authorizer);
         }
     }
 
     /**
-     * @param Closure(): list<string> $userPermissions
+     * @param Closure $authorizer
      */
-    private static function attachPermissionMiddleware(RouteInstance $route, string $permission, Closure $userPermissions): void
+    private static function attachPermissionMiddleware(RouteInstance $route, string $permission, Closure $authorizer): void
     {
         if ($permission !== 'public') {
-            $route->middleware((string) ResourceMiddleware::of($permission, $userPermissions));
+            $route->middleware((string) ResourceMiddleware::of($permission, $authorizer));
         }
     }
 

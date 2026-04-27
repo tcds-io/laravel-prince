@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Test\Tcds\Io\Prince\Feature;
 
 use PHPUnit\Framework\Attributes\Test;
+use Tcds\Io\Prince\AuthorizerContext;
 use Tcds\Io\Prince\ModelResourceBuilder;
 
 class ModelResourceGlobalSchemaTest extends ModelResourceNestedTestCase
@@ -12,7 +13,7 @@ class ModelResourceGlobalSchemaTest extends ModelResourceNestedTestCase
     protected function registerRoutes(): void
     {
         ModelResourceBuilder::create()
-            ->userPermissions(fn() => ['default:model.read', 'default:model.create', 'default:model.update', 'default:model.delete'])
+            ->authorizer(fn() => true)
             ->resource(
                 model: TestInvoice::class,
                 resources: fn(ModelResourceBuilder $b) => $b->resource(TestItem::class),
@@ -47,7 +48,7 @@ class ModelResourceGlobalSchemaTest extends ModelResourceNestedTestCase
     public function global_schema_includes_permissions_filtered_by_user(): void
     {
         ModelResourceBuilder::create()
-            ->userPermissions(fn() => ['default:model.read'])
+            ->authorizer(fn(AuthorizerContext $context) => $context->permission === 'default:model.read')
             ->resource(TestInvoice::class)
             ->resource(TestItem::class, segment: 'items')
             ->routes();
@@ -65,7 +66,7 @@ class ModelResourceGlobalSchemaTest extends ModelResourceNestedTestCase
     public function global_schema_is_always_accessible_regardless_of_permissions(): void
     {
         ModelResourceBuilder::create()
-            ->userPermissions(fn() => [])
+            ->authorizer(fn() => false)
             ->resource(TestInvoice::class)
             ->routes();
 
