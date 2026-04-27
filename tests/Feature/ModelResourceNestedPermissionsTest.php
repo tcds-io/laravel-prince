@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Test\Tcds\Io\Prince\Feature;
 
 use PHPUnit\Framework\Attributes\Test;
+use Tcds\Io\Prince\AuthorizerContext;
 use Tcds\Io\Prince\ModelResource;
 
 /**
@@ -18,7 +19,7 @@ class ModelResourceNestedPermissionsTest extends ModelResourceNestedTestCase
     {
         ModelResource::of(
             TestInvoice::class,
-            userPermissions: fn() => ['model:create', 'model:update', 'model:delete'],
+            authorizer: fn(AuthorizerContext $context) => in_array($context->permission, ['model:create', 'model:update', 'model:delete']),
             resources: [ModelResource::of(TestItem::class)],
         )->routes();
     }
@@ -81,7 +82,7 @@ class ModelResourceNestedPermissionsTest extends ModelResourceNestedTestCase
     {
         ModelResource::of(
             TestInvoice::class,
-            userPermissions: fn() => ['model:read', 'model:create', 'model:update', 'model:delete'],
+            authorizer: fn() => true,
             resources: [ModelResource::of(TestItem::class)],
         )->routes();
 

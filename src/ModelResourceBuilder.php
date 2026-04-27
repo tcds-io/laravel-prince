@@ -9,12 +9,13 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * @phpstan-type Permission string
- * Fluent builder for registering one or more ModelResource routes with shared user permissions.
- * Eliminates the need to repeat userPermissions on every resource and manages global search
+ * Fluent builder for registering one or more ModelResource routes with a shared authorizer.
+ * Eliminates the need to repeat authorizer on every resource and manages global search
  * entries internally — no static state, no variable capture required.
  *
  * Usage:
- *   ModelResourceBuilder::create(userPermissions: [...])
+ *   ModelResourceBuilder::create()
+ *       ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, $user->permissions()))
  *       ->resource(Invoice::class, resources: fn($b) => $b->resource(InvoiceItem::class), globalSearch: true)
  *       ->resource(Order::class,   resources: fn($b) => $b->resource(OrderItem::class),   globalSearch: true)
  *       ->routes();
@@ -27,20 +28,20 @@ final class ModelResourceBuilder
     /** @var list<array{table: string, routePrefix: string, connection: string|null, schema: Closure(): list<ColumnSchema>}> */
     private array $searchEntries = [];
 
-    /** @param Closure(): list<Permission> $userPermissions */
-    private Closure $userPermissions;
+    /** @var Closure */
+    private Closure $authorizer;
 
     private int $maxLimit;
 
     private function __construct(int $maxLimit = 100)
     {
         $this->maxLimit = $maxLimit;
-        $this->userPermissions = fn() => [
+        $this->authorizer = fn(AuthorizerContext $context) => in_array($context->permission, [
             'default:model.read',
             'default:model.create',
             'default:model.update',
             'default:model.delete',
-        ];
+        ]);
     }
 
     public static function create(int $maxLimit = 100): self
@@ -49,25 +50,24 @@ final class ModelResourceBuilder
     }
 
     /**
-     * Creates a new builder. The given userPermissions are inherited by all resources.
-     * Each resource sets its own resourcePermissions via resource().
+     * Sets the authorizer closure inherited by all resources in this builder.
+     * All parameters are resolved via the IoC container. Declare `RequestContext`
+     * as a parameter to receive the current request's method, path, and permission string.
      *
-     * @param Closure(): list<Permission> $userPermissions The permissions the current user holds
+     * @param Closure $authorizer Returns true to allow, false to deny (403)
      */
-    public function userPermissions(Closure $userPermissions): self
+    public function authorizer(Closure $authorizer): self
     {
-        $this->userPermissions = $userPermissions;
+        $this->authorizer = $authorizer;
 
         return $this;
     }
-
-    public function permissions(): void {}
 
     /**
      * Adds a resource to the builder.
      *
      * @param class-string<Model> $model
-     * @param (Closure(self): void)|null $resources Callback to define nested resources; the nested builder inherits the same userPermissions
+     * @param (Closure(self): void)|null $resources Callback to define nested resources; the nested builder inherits the same authorizer
      * @param bool $globalSearch Whether to include this resource in the global /search route
      * @param string|null $segment Custom URL segment (defaults to the model's table name)
      * @param string|null $foreignKey FK column referencing the parent table (only meaningful when used inside a $resources callback; defaults to {singular_parent_table}_id)
@@ -176,7 +176,7 @@ final class ModelResourceBuilder
         bool $belongsTo = false,
         ?int $maxLimit = null,
     ): self {
-        $nestedBuilder = (new self($this->maxLimit))->userPermissions($this->userPermissions);
+        $nestedBuilder = (new self($this->maxLimit))->authorizer($this->authorizer);
 
         if ($resources !== null) {
             $resources($nestedBuilder);
@@ -195,7 +195,7 @@ final class ModelResourceBuilder
 
         $resource = ModelResource::of(
             model: $model,
-            userPermissions: $this->userPermissions,
+            authorizer: $this->authorizer,
             resourcePermissions: $resourcePermissions,
             resources: $nestedResources,
             segment: $segment,

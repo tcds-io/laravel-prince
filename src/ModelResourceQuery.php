@@ -16,7 +16,7 @@ readonly class ModelResourceQuery
     /**
      * @template T of Model
      * @param class-string<T> $model
-     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, userPermissions: (Closure(): list<string>)}> $constraints
+     * @param array<array{param: string, fk: string, model: class-string<Model>, requiredPermission: string, authorizer: Closure}> $constraints
      * @param list<ColumnSchema> $schema
      * @return array<string, mixed>
      */
@@ -24,8 +24,8 @@ readonly class ModelResourceQuery
     {
         $query = $model::query()->withoutEagerLoads();
 
-        foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'userPermissions' => $perms]) {
-            if (!in_array($required, ($perms)())) {
+        foreach ($constraints as ['param' => $param, 'fk' => $fk, 'model' => $parentModel, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+            if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                 throw new AccessDeniedHttpException();
             }
             $parentId = self::routeId($request, $param);

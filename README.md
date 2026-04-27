@@ -7,7 +7,7 @@ Turn any Eloquent model into a fully working REST API — no controllers, no for
 
 ```php
 ModelResourceBuilder::create()
-    ->userPermissions(fn() => $user->permissions)
+    ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, $user->permissions))
     ->resource(Invoice::class)
     ->resource(Product::class)
     ->routes();
@@ -17,30 +17,31 @@ ModelResourceBuilder::create()
 
 ## What you get
 
-For every registered model the following routes are created automatically, using the model's `$table` as the URL segment:
+For every registered model the following routes are created automatically, using the model's `$table` as the URL
+segment:
 
-| Method    | Path                  | Action                                     |
-|-----------|-----------------------|--------------------------------------------|
-| `GET`     | `/invoices`           | Paginated list                             |
-| `GET`     | `/invoices/_schema`   | Column schema, nested resources, permissions |
-| `GET`     | `/invoices/{id}`      | Single record (+ embedded nested lists)    |
-| `POST`    | `/invoices`           | Create one — or batch-create many          |
-| `PATCH`   | `/invoices/{id}`      | Update one                                 |
-| `PATCH`   | `/invoices`           | Batch-update many                          |
-| `DELETE`  | `/invoices/{id}`      | Delete one                                 |
-| `DELETE`  | `/invoices`           | Batch-delete many                          |
+| Method   | Path                | Action                                       |
+|----------|---------------------|----------------------------------------------|
+| `GET`    | `/invoices`         | Paginated list                               |
+| `GET`    | `/invoices/_schema` | Column schema, nested resources, permissions |
+| `GET`    | `/invoices/{id}`    | Single record (+ embedded nested lists)      |
+| `POST`   | `/invoices`         | Create one — or batch-create many            |
+| `PATCH`  | `/invoices/{id}`    | Update one                                   |
+| `PATCH`  | `/invoices`         | Batch-update many                            |
+| `DELETE` | `/invoices/{id}`    | Delete one                                   |
+| `DELETE` | `/invoices`         | Batch-delete many                            |
 
 Plus one route at the builder group level:
 
-| Method | Path       | Action                                                        |
-|--------|------------|---------------------------------------------------------------|
-| `GET`  | `/_schema` | Schema for all registered resources                          |
+| Method | Path       | Action                              |
+|--------|------------|-------------------------------------|
+| `GET`  | `/_schema` | Schema for all registered resources |
 
 And when global search is enabled:
 
-| Method | Path      | Action                                                   |
-|--------|-----------|----------------------------------------------------------|
-| `GET`  | `/search` | Full-text search across all opted-in resources           |
+| Method | Path      | Action                                         |
+|--------|-----------|------------------------------------------------|
+| `GET`  | `/search` | Full-text search across all opted-in resources |
 
 ---
 
@@ -60,27 +61,30 @@ Register your resources inside `routes/api.php`:
 
 ```php
 use Tcds\Io\Prince\ModelResourceBuilder;
+use Tcds\Io\Prince\AuthorizerContext;
 
 Route::prefix('/api/backoffice')->group(function () {
     ModelResourceBuilder::create()
-        ->userPermissions(fn() => $request->user()->permissions)
+        ->authorizer(fn(AuthorizerContext $ctx) => in_array($ctx->permission, $request->user()->permissions))
         ->resource(Invoice::class, globalSearch: true)
         ->resource(Product::class, globalSearch: true)
         ->routes();
 });
 ```
 
-The package reads each model's `$table` and `$casts` properties to determine route prefixes and column types — nothing to configure.
+The package reads each model's `$table` and `$casts` properties to determine route prefixes and column types — nothing
+to configure.
 
 ---
 
 ## Nested resources
 
-Register sub-resources via a callback. Nested routes are scoped to the parent automatically, and the parent's FK is inferred from the table name (`invoice_id` for `invoices`):
+Register sub-resources via a callback. Nested routes are scoped to the parent automatically, and the parent's FK is
+inferred from the table name (`invoice_id` for `invoices`):
 
 ```php
 ModelResourceBuilder::create()
-    ->userPermissions(fn() => $user->permissions)
+    ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, $user->permissions))
     ->resource(
         model: Invoice::class,
         resources: fn(ModelResourceBuilder $b) => $b
@@ -89,11 +93,13 @@ ModelResourceBuilder::create()
     ->routes();
 ```
 
-This registers the full nested route set under `/invoices/{invoiceId}/items`, with every request validated against the parent's existence.
+This registers the full nested route set under `/invoices/{invoiceId}/items`, with every request validated against the
+parent's existence.
 
 ### GET response includes inner lists
 
-`GET /invoices/{id}` automatically embeds each registered nested resource as an inner list — **`$with` eager loads on the model are ignored**, keeping the API shape fully controlled by what you register:
+`GET /invoices/{id}` automatically embeds each registered nested resource as an inner list — **`$with` eager loads on
+the model are ignored**, keeping the API shape fully controlled by what you register:
 
 ```json
 {
@@ -102,14 +108,28 @@ This registers the full nested route set under `/invoices/{invoiceId}/items`, wi
     "title": "November invoice",
     "amount": 299.00,
     "items": [
-      { "id": 10, "description": "Widget A", "price": 49.00, "_resource": "/invoices/1/items/10" },
-      { "id": 11, "description": "Widget B", "price": 99.00, "_resource": "/invoices/1/items/11" }
+      {
+        "id": 10,
+        "description": "Widget A",
+        "price": 49.00,
+        "_resource": "/invoices/1/items/10"
+      },
+      {
+        "id": 11,
+        "description": "Widget B",
+        "price": 99.00,
+        "_resource": "/invoices/1/items/11"
+      }
     ]
   },
   "meta": {
     "resource": "invoices",
-    "schema": [...],
-    "resources": ["items"]
+    "schema": [
+      ...
+    ],
+    "resources": [
+      "items"
+    ]
   }
 }
 ```
@@ -118,17 +138,28 @@ This registers the full nested route set under `/invoices/{invoiceId}/items`, wi
 
 ## List responses
 
-Every item in a paginated list includes a `_resource` field — the direct URL to that record, including any outer route prefix and parent path for nested resources:
+Every item in a paginated list includes a `_resource` field — the direct URL to that record, including any outer route
+prefix and parent path for nested resources:
 
 ```json
 {
   "data": [
-    { "id": 1, "title": "Invoice A", "_resource": "/api/backoffice/invoices/1" },
-    { "id": 2, "title": "Invoice B", "_resource": "/api/backoffice/invoices/2" }
+    {
+      "id": 1,
+      "title": "Invoice A",
+      "_resource": "/api/backoffice/invoices/1"
+    },
+    {
+      "id": 2,
+      "title": "Invoice B",
+      "_resource": "/api/backoffice/invoices/2"
+    }
   ],
   "meta": {
     "resource": "invoices",
-    "schema": [...],
+    "schema": [
+      ...
+    ],
     "current_page": 1,
     "per_page": 10,
     "total": 2,
@@ -162,11 +193,13 @@ Values above `maxLimit` are silently clamped to it.
 
 ## Batch operations
 
-All three write endpoints support a batch mode alongside their single-record form. Every batch request is wrapped in a database transaction — if any record fails, the whole operation is rolled back.
+All three write endpoints support a batch mode alongside their single-record form. Every batch request is wrapped in a
+database transaction — if any record fails, the whole operation is rolled back.
 
 ### Batch create
 
-Send a `{"data": [...]}` body (an object with a single `data` array key) to create multiple records in one request. Returns the IDs of all created records:
+Send a `{"data": [...]}` body (an object with a single `data` array key) to create multiple records in one request.
+Returns the IDs of all created records:
 
 ```
 POST /invoices
@@ -186,7 +219,8 @@ POST /invoices
 
 ### Batch update
 
-`PATCH /invoices` with a `{"data": [...]}` body, where each item must include `id` alongside the fields to update. Returns `204 No Content`. Returns `404` if any ID is not found (and rolls back all changes):
+`PATCH /invoices` with a `{"data": [...]}` body, where each item must include `id` alongside the fields to update.
+Returns `204 No Content`. Returns `404` if any ID is not found (and rolls back all changes):
 
 ```
 PATCH /invoices
@@ -197,7 +231,8 @@ PATCH /invoices
 
 ### Batch delete
 
-`DELETE /invoices` with a `{"data": [id, ...]}` body. Returns `204 No Content`. Returns `404` if any ID is not found (and rolls back all deletions):
+`DELETE /invoices` with a `{"data": [id, ...]}` body. Returns `204 No Content`. Returns `404` if any ID is not found (
+and rolls back all deletions):
 
 ```
 DELETE /invoices
@@ -212,32 +247,46 @@ DELETE /invoices
 
 ### Per-resource schema
 
-`GET /invoices/_schema` returns the column schema, registered nested resource names, and the permissions the **current user** holds for that resource. Always accessible regardless of permission settings.
+`GET /invoices/_schema` returns the column schema, registered nested resource names, and the permissions the **current
+user** holds for that resource. Always accessible regardless of permission settings.
 
 ### Global schema
 
-`GET /_schema` (registered at the builder group level) returns the same information for **all registered resources** in one request:
+`GET /_schema` (registered at the builder group level) returns the same information for **all registered resources** in
+one request:
 
 ```json
 {
   "data": [
     {
       "resource": "invoices",
-      "schema": [...],
-      "resources": ["items"],
-      "permissions": { "read": "invoices:read", "create": "invoices:write" }
+      "schema": [
+        ...
+      ],
+      "resources": [
+        "items"
+      ],
+      "permissions": {
+        "read": "invoices:read",
+        "create": "invoices:write"
+      }
     },
     {
       "resource": "products",
-      "schema": [...],
+      "schema": [
+        ...
+      ],
       "resources": [],
-      "permissions": { "read": "products:read" }
+      "permissions": {
+        "read": "products:read"
+      }
     }
   ]
 }
 ```
 
-Always accessible regardless of permissions, and like the per-resource schema, only shows permissions the current user holds.
+Always accessible regardless of permissions, and like the per-resource schema, only shows permissions the current user
+holds.
 
 ### Schema response shape
 
@@ -247,15 +296,32 @@ The per-resource `/_schema` response (used directly or as an element in the glob
 {
   "resource": "invoices",
   "schema": [
-    { "name": "id",         "type": "integer"  },
-    { "name": "title",      "type": "text"     },
-    { "name": "amount",     "type": "number"   },
-    { "name": "created_at", "type": "datetime" },
-    { "name": "updated_at", "type": "datetime" }
+    {
+      "name": "id",
+      "type": "integer"
+    },
+    {
+      "name": "title",
+      "type": "text"
+    },
+    {
+      "name": "amount",
+      "type": "number"
+    },
+    {
+      "name": "created_at",
+      "type": "datetime"
+    },
+    {
+      "name": "updated_at",
+      "type": "datetime"
+    }
   ],
-  "resources": ["items"],
+  "resources": [
+    "items"
+  ],
   "permissions": {
-    "read":   "invoices:read",
+    "read": "invoices:read",
     "create": "invoices:write",
     "update": "invoices:write",
     "delete": "invoices:delete"
@@ -263,13 +329,14 @@ The per-resource `/_schema` response (used directly or as an element in the glob
 }
 ```
 
-Only permissions the current user actually holds appear in the map — so a read-only user sees only `read`. Endpoints with `'public'` permission are always included. Extra [action](#actions) permissions appear under slug-formatted keys:
+Only permissions the current user actually holds appear in the map — so a read-only user sees only `read`. Endpoints
+with `'public'` permission are always included. Extra [action](#actions) permissions appear under slug-formatted keys:
 
 ```json
 "permissions": {
-  "read":           "invoices:read",
-  "post-import":    "invoices:write",
-  "get-id-preview": "invoices:read"
+"read": "invoices:read",
+"post-import": "invoices:write",
+"get-id-preview": "invoices:read"
 }
 ```
 
@@ -300,25 +367,26 @@ GET /invoices?status=active        → exact match (also works for enums)
 
 **Operator reference**
 
-| Value pattern  | Operator            | Column types            |
-|----------------|---------------------|-------------------------|
-| `%foo%`        | `LIKE`              | text, enum              |
-| `>N`           | `>`                 | integer, number, datetime |
-| `<N`           | `<`                 | integer, number, datetime |
-| `>=N`          | `>=`                | integer, number, datetime |
-| `<=N`          | `<=`                | integer, number, datetime |
-| `from/to`      | `BETWEEN`           | integer, number, datetime |
-| anything else  | `=`                 | all                     |
+| Value pattern | Operator  | Column types              |
+|---------------|-----------|---------------------------|
+| `%foo%`       | `LIKE`    | text, enum                |
+| `>N`          | `>`       | integer, number, datetime |
+| `<N`          | `<`       | integer, number, datetime |
+| `>=N`         | `>=`      | integer, number, datetime |
+| `<=N`         | `<=`      | integer, number, datetime |
+| `from/to`     | `BETWEEN` | integer, number, datetime |
+| anything else | `=`       | all                       |
 
 ---
 
 ## Global search
 
-Opt any resource into cross-resource full-text search with `globalSearch: true`. A single `GET /search?q=value` endpoint is registered covering all opted-in resources:
+Opt any resource into cross-resource full-text search with `globalSearch: true`. A single `GET /search?q=value` endpoint
+is registered covering all opted-in resources:
 
 ```php
 ModelResourceBuilder::create()
-    ->userPermissions(fn() => $user->permissions)
+    ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, $user->permissions))
     ->resource(Invoice::class, globalSearch: true)
     ->resource(Product::class, globalSearch: true)
     ->resource(Customer::class)          // excluded from search
@@ -333,57 +401,80 @@ GET /search?q=%acme%    → LIKE
 ```json
 {
   "data": [
-    { "id": 1, "description": "Acme Corp", "resource": "invoices", "link": "/api/backoffice/invoices/1" },
-    { "id": 7, "description": "Acme Widget", "resource": "products", "link": "/api/backoffice/products/7" }
+    {
+      "id": 1,
+      "description": "Acme Corp",
+      "resource": "invoices",
+      "link": "/api/backoffice/invoices/1"
+    },
+    {
+      "id": 7,
+      "description": "Acme Widget",
+      "resource": "products",
+      "link": "/api/backoffice/products/7"
+    }
   ]
 }
 ```
 
-Each result has `id`, `description` (first matching text column), `resource` (table name), and `link` (full URL including any outer route prefix). Each record appears at most once per resource even when multiple text columns match.
+Each result has `id`, `description` (first matching text column), `resource` (table name), and `link` (full URL
+including any outer route prefix). Each record appears at most once per resource even when multiple text columns match.
 
 ---
 
 ## Permissions
 
-### User permissions
+### Authorizer
 
-A closure returning the permissions the current user holds. Evaluated per request — so it runs after authentication middleware, can read the request, and supports any auth strategy. Shared across all resources in the builder — set once, applied everywhere:
+A closure that returns `true` to allow access or `false` to deny it (403). Evaluated per request — so it runs after
+authentication middleware, can read the request, and supports any auth strategy. Shared across all resources in the
+builder — set once, applied everywhere.
+
+All parameters are resolved via the Laravel IoC container. Declare `RequestContext` to receive the current request's
+`method`, `path`, and `permission` string:
 
 ```php
+use Tcds\Io\Prince\AuthorizerContext;
+
 ModelResourceBuilder::create()
-    ->userPermissions(fn() => $request->user()->permissions)
+    ->authorizer(fn(AuthorizerContext $ctx) => in_array($ctx->permission, $request->user()->permissions))
     ->resource(Invoice::class)
     ->resource(Product::class)
     ->routes();
 ```
 
-Because it's a closure, you can use any source:
+`RequestContext` is **optional** — declare it only when you need it. Other injectables (services, etc.) are resolved
+from the container as usual:
 
 ```php
-// From the authenticated user
-fn() => Auth::user()?->permissions ?? []
+// Check permission against the authenticated user
+fn(RequestContext $ctx) => in_array($ctx->permission, Auth::user()?->permissions ?? [])
 
-// From a gate/policy check
-fn() => Gate::allows('admin') ? ['invoices:read', 'invoices:write'] : []
+// Inject a service — no RequestContext needed
+fn(AuthService $auth) => $auth->isAdmin()
 
-// Hard-coded (e.g. for public read-only endpoints)
-fn() => ['invoices:read']
+// Use both
+fn(RequestContext $ctx, AuthService $auth) => $auth->can($ctx->permission)
+
+// Flat allow/deny (e.g. for public read-only endpoints)
+fn() => false
 ```
 
 ### Resource permissions
 
-The permission each action _requires_. Defaults to the strings below; override per resource when your app uses different permission names:
+The permission each action _requires_. Defaults to the strings below; override per resource when your app uses different
+permission names:
 
-| Action          | Default required permission    |
-|-----------------|--------------------------------|
-| `list` + `get`  | `default:model.read`           |
-| `create`        | `default:model.create`         |
-| `update`        | `default:model.update`         |
-| `delete`        | `default:model.delete`         |
+| Action         | Default required permission |
+|----------------|-----------------------------|
+| `list` + `get` | `default:model.read`        |
+| `create`       | `default:model.create`      |
+| `update`       | `default:model.update`      |
+| `delete`       | `default:model.delete`      |
 
 ```php
 ModelResourceBuilder::create()
-    ->userPermissions(fn() => Auth::user()?->permissions ?? [])
+    ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, Auth::user()?->permissions ?? []))
     ->resource(
         model: Invoice::class,
         resourcePermissions: [
@@ -398,18 +489,20 @@ ModelResourceBuilder::create()
 
 Besides regular permission strings, one **reserved keyword** controls a special behaviour:
 
-| Keyword    | Behaviour                                                                 |
-|------------|---------------------------------------------------------------------------|
+| Keyword    | Behaviour                                                                    |
+|------------|------------------------------------------------------------------------------|
 | `'public'` | Route is registered **without** permission middleware — anyone can access it |
 
-To disable an endpoint entirely, simply **omit its key** from `resourcePermissions`. The route will not be registered and the framework returns 404.
+To disable an endpoint entirely, simply **omit its key** from `resourcePermissions`. The route will not be registered
+and the framework returns 404.
 
-> **Reserved word:** `'public'` must not be used as an actual permission name in your application. It is intercepted by the library before any user permission check.
+> **Reserved word:** `'public'` must not be used as an actual permission name in your application. It is intercepted by
+> the library before any user permission check.
 
 ```php
 // Read-only resource: anyone can list/get, create/update/delete are not registered
 ModelResourceBuilder::create()
-    ->userPermissions(fn() => $user->permissions)
+    ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, $user->permissions))
     ->resource(
         model: Product::class,
         resourcePermissions: [
@@ -423,46 +516,58 @@ ModelResourceBuilder::create()
 
 ## Type inference
 
-The package inspects each database column and applies the right PHP type automatically. `$casts` on your model takes priority over the raw DB type.
+The package inspects each database column and applies the right PHP type automatically. `$casts` on your model takes
+priority over the raw DB type.
 
-| DB / cast type        | API type   | Parsed as              |
-|-----------------------|------------|------------------------|
-| `bigint`, `integer`   | `integer`  | `(int)`                |
-| `decimal`, `float`    | `number`   | `(float)`              |
-| `datetime`            | `datetime` | `Carbon`               |
-| `immutable_datetime`  | `datetime` | `CarbonImmutable`      |
-| Any `BackedEnum`      | `enum`     | `MyEnum::from(...)`    |
-| Anything else         | `text`     | passthrough            |
+| DB / cast type       | API type   | Parsed as           |
+|----------------------|------------|---------------------|
+| `bigint`, `integer`  | `integer`  | `(int)`             |
+| `decimal`, `float`   | `number`   | `(float)`           |
+| `datetime`           | `datetime` | `Carbon`            |
+| `immutable_datetime` | `datetime` | `CarbonImmutable`   |
+| Any `BackedEnum`     | `enum`     | `MyEnum::from(...)` |
+| Anything else        | `text`     | passthrough         |
 
 Enum values are automatically included in the schema:
 
 ```json
-{ "name": "status", "type": "enum", "values": ["draft", "active", "cancelled"] }
+{
+  "name": "status",
+  "type": "enum",
+  "values": [
+    "draft",
+    "active",
+    "cancelled"
+  ]
+}
 ```
 
 ---
 
 ## Error handling
 
-| Situation                        | HTTP response                          |
-|----------------------------------|----------------------------------------|
-| Record not found                 | `404 Not Found`                        |
-| Missing required permission      | `403 Forbidden`                        |
-| Invalid value / constraint error | `400 Bad Request` with error detail    |
+| Situation                        | HTTP response                       |
+|----------------------------------|-------------------------------------|
+| Record not found                 | `404 Not Found`                     |
+| Missing required permission      | `403 Forbidden`                     |
+| Invalid value / constraint error | `400 Bad Request` with error detail |
 
 ---
 
 ## Actions
 
-Register extra endpoints on a resource with `actions`. Use `ResourceAction::{method}()` — paths containing `{id}` are item-level (the record is resolved and injected automatically); all other paths are collection-level.
+Register extra endpoints on a resource with `actions`. Use `ResourceAction::{method}()` — paths containing `{id}` are
+item-level (the record is resolved and injected automatically); all other paths are collection-level.
 
-The `action` must be an **invokable class** (a class with `__invoke`). Laravel's IoC container resolves and calls it, so any type-hinted dependencies are injected automatically.
+The `action` must be an **invokable class** (a class with `__invoke`). Laravel's IoC container resolves and calls it, so
+any type-hinted dependencies are injected automatically.
 
 ```php
+use Tcds\Io\Prince\AuthorizerContext;
 use Tcds\Io\Prince\ResourceAction;
 
 ModelResourceBuilder::create()
-    ->userPermissions(fn() => $user->permissions)
+    ->authorizer(fn(AuthorizerContext $ctx) => in_array($ctx->permission, $user->permissions))
     ->resource(
         model: Invoice::class,
         resourcePermissions: [
@@ -498,24 +603,29 @@ ModelResourceBuilder::create()
     ->routes();
 ```
 
-**Collection actions** (`/import`) are registered before `/{id}` routes so literal path segments are never captured as record IDs.
+**Collection actions** (`/import`) are registered before `/{id}` routes so literal path segments are never captured as
+record IDs.
 
-**Item actions** (`/{id}/send`) resolve the record from the database before calling the action. The model instance is injected by type — any parameter type-hinted with the model class receives it. The full Laravel IoC is available for additional injectables (`Request`, services, etc.). `permission` is optional; omit it to allow unauthenticated access to that action.
+**Item actions** (`/{id}/send`) resolve the record from the database before calling the action. The model instance is
+injected by type — any parameter type-hinted with the model class receives it. The full Laravel IoC is available for
+additional injectables (`Request`, services, etc.). `permission` is optional; omit it to allow unauthenticated access to
+that action.
 
 ---
 
 ## Events
 
-Every CRUD operation fires a lifecycle event before and after the DB write. Register listeners via standard Laravel event dispatching — no extra configuration needed.
+Every CRUD operation fires a lifecycle event before and after the DB write. Register listeners via standard Laravel
+event dispatching — no extra configuration needed.
 
-| Event | When | Signature |
-|---|---|---|
+| Event              | When          | Signature                                |
+|--------------------|---------------|------------------------------------------|
 | `ResourceCreating` | before insert | `(class-string $modelName, array $data)` |
-| `ResourceCreated` | after insert | `(Model $model)` |
-| `ResourceUpdating` | before update | `(Model $model, array $data)` |
-| `ResourceUpdated` | after update | `(Model $model)` |
-| `ResourceDeleting` | before delete | `(Model $model)` |
-| `ResourceDeleted` | after delete | `(int\|string $modelId)` |
+| `ResourceCreated`  | after insert  | `(Model $model)`                         |
+| `ResourceUpdating` | before update | `(Model $model, array $data)`            |
+| `ResourceUpdated`  | after update  | `(Model $model)`                         |
+| `ResourceDeleting` | before delete | `(Model $model)`                         |
+| `ResourceDeleted`  | after delete  | `(int\|string $modelId)`                 |
 
 ```php
 use Tcds\Io\Prince\Events\ResourceCreated;
@@ -536,11 +646,13 @@ Event::listen(ResourceCreating::class, function (ResourceCreating $event): void 
 });
 ```
 
-`ResourceCreating` and `ResourceUpdating` implement `MutableDataEvent` — any changes to `$event->data` are applied to the actual DB write.
+`ResourceCreating` and `ResourceUpdating` implement `MutableDataEvent` — any changes to `$event->data` are applied to
+the actual DB write.
 
 ### Overriding default events
 
-Override any event per resource by passing an `events` array keyed by lifecycle name. Unspecified keys keep their defaults:
+Override any event per resource by passing an `events` array keyed by lifecycle name. Unspecified keys keep their
+defaults:
 
 ```php
 use Tcds\Io\Prince\Events\ResourceCreating;
@@ -576,7 +688,7 @@ Override the URL segment with `segment` when you want a different path than the 
 
 ```php
 ModelResourceBuilder::create()
-    ->userPermissions(fn() => $user->permissions)
+    ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, $user->permissions))
     ->resource(model: Invoice::class, segment: 'bills')
     ->routes();
 // Routes registered at /bills/... — table name remains invoices in meta/schema
