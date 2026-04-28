@@ -9,7 +9,7 @@ class Prince
     /**
      * @return array{ read: string, create: string, update: string, delete: string }
      */
-    public static function all(string $context, string $resource): array
+    public static function crud(string $context, string $resource): array
     {
         return [
             'read' => "$context:$resource.read",
@@ -47,6 +47,6 @@ class Prince
      */
     public static function without(string $context, string $resource, array $keys): array
     {
-        return array_diff_key(self::all($context, $resource), array_flip($keys));
+        return array_diff_key(self::crud($context, $resource), array_flip($keys));
     }
 }
