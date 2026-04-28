@@ -20,7 +20,7 @@ class ModelPermissionsTest extends TestCase
                 'update' => 'finance:invoice.update',
                 'delete' => 'finance:invoice.delete',
             ],
-            Prince::all('finance', 'invoice'),
+            Prince::crud('finance', 'invoice'),
         );
     }
 
@@ -78,7 +78,7 @@ class ModelPermissionsTest extends TestCase
     public function without_with_empty_list_returns_all_permissions(): void
     {
         $this->assertEquals(
-            Prince::all('finance', 'invoice'),
+            Prince::crud('finance', 'invoice'),
             Prince::without('finance', 'invoice', []),
         );
     }
