@@ -36,12 +36,7 @@ final class ModelResourceBuilder
     private function __construct(int $maxLimit = 100)
     {
         $this->maxLimit = $maxLimit;
-        $this->authorizer = fn(AuthorizerContext $context) => in_array($context->permission, [
-            'default:model.read',
-            'default:model.create',
-            'default:model.update',
-            'default:model.delete',
-        ]);
+        $this->authorizer = fn() => true;
     }
 
     public static function create(int $maxLimit = 100): self
@@ -83,10 +78,10 @@ final class ModelResourceBuilder
         ?string $segment = null,
         ?string $foreignKey = null,
         array $resourcePermissions = [
-            'read' => 'default:model.read',
-            'create' => 'default:model.create',
-            'update' => 'default:model.update',
-            'delete' => 'default:model.delete',
+            'read' => 'public',
+            'create' => 'public',
+            'update' => 'public',
+            'delete' => 'public',
         ],
         array $actions = [],
         array $events = [],
@@ -112,10 +107,10 @@ final class ModelResourceBuilder
         ?string $segment = null,
         bool $embed = false,
         array $resourcePermissions = [
-            'read' => 'default:model.read',
-            'create' => 'default:model.create',
-            'update' => 'default:model.update',
-            'delete' => 'default:model.delete',
+            'read' => 'public',
+            'create' => 'public',
+            'update' => 'public',
+            'delete' => 'public',
         ],
         array $actions = [],
         array $events = [],
@@ -140,10 +135,10 @@ final class ModelResourceBuilder
         ?string $segment = null,
         bool $embed = false,
         array $resourcePermissions = [
-            'read' => 'default:model.read',
-            'create' => 'default:model.create',
-            'update' => 'default:model.update',
-            'delete' => 'default:model.delete',
+            'read' => 'public',
+            'create' => 'public',
+            'update' => 'public',
+            'delete' => 'public',
         ],
         ?int $maxLimit = null,
     ): self {
@@ -166,10 +161,10 @@ final class ModelResourceBuilder
         ?string $foreignKey = null,
         bool $embed = false,
         array $resourcePermissions = [
-            'read' => 'default:model.read',
-            'create' => 'default:model.create',
-            'update' => 'default:model.update',
-            'delete' => 'default:model.delete',
+            'read' => 'public',
+            'create' => 'public',
+            'update' => 'public',
+            'delete' => 'public',
         ],
         array $actions = [],
         array $events = [],

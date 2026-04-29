@@ -9,8 +9,8 @@ namespace Tcds\Io\Prince;
  * Declare it as a parameter in your authorizer to receive it — it is optional.
  *
  * Example:
- *   ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, $user->permissions()))
- *   ->authorizer(fn(RequestContext $ctx, AuthService $auth) => $auth->can($ctx->permission))
+ *   ->authorizer(fn(AuthorizerContext $ctx) => in_array($ctx->permission, $user->permissions()))
+ *   ->authorizer(fn(AuthorizerContext $ctx, AuthService $auth) => $auth->can($ctx->permission))
  *   ->authorizer(fn(AuthService $auth) => $auth->isAdmin())   // RequestContext not needed
  */
 readonly class AuthorizerContext

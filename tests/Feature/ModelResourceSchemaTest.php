@@ -29,10 +29,10 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
         $response = $this->getJson('/invoices/_schema');
 
         $response->assertOk();
-        $response->assertJsonPath('permissions.read', 'model:read');
-        $response->assertJsonPath('permissions.create', 'model:create');
-        $response->assertJsonPath('permissions.update', 'model:update');
-        $response->assertJsonPath('permissions.delete', 'model:delete');
+        $response->assertJsonPath('permissions.read', 'public');
+        $response->assertJsonPath('permissions.create', 'public');
+        $response->assertJsonPath('permissions.update', 'public');
+        $response->assertJsonPath('permissions.delete', 'public');
     }
 
     #[Test]
@@ -54,7 +54,12 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     #[Test]
     public function schema_omits_permissions_the_user_does_not_hold(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read')->routes();
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', resourcePermissions: [
+            'read' => 'model:read',
+            'create' => 'model:create',
+            'update' => 'model:update',
+            'delete' => 'model:delete',
+        ])->routes();
 
         $response = $this->getJson('/invoices/_schema');
 

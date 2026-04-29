@@ -58,7 +58,7 @@ readonly class ModelResource
      * Builds a ModelResource definition. Call ->routes() on the result to register routes.
      *
      * @param class-string<Model> $model
-     * @param Closure|null $authorizer Invoked per request — all parameters are IoC-resolved; declare RequestContext to receive method/path/permission. Defaults to granting all standard model permissions.
+     * @param Closure|null $authorizer Invoked per request — all parameters are IoC-resolved; declare AuthorizerContext to receive method/path/permission. Defaults to granting all standard model permissions.
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions Maps each action to the permission it requires
      * @param array<int|string, ModelResource|class-string<Model>> $resources
      * @param string|null $segment Custom URL segment (defaults to the model's table name)
@@ -71,10 +71,10 @@ readonly class ModelResource
         string $model,
         ?Closure $authorizer = null,
         array $resourcePermissions = [
-            'read' => 'model:read',
-            'create' => 'model:create',
-            'update' => 'model:update',
-            'delete' => 'model:delete',
+            'read' => 'public',
+            'create' => 'public',
+            'update' => 'public',
+            'delete' => 'public',
         ],
         array $resources = [],
         ?string $segment = null,
@@ -85,7 +85,7 @@ readonly class ModelResource
         array $events = [],
         int $maxLimit = 100,
     ): self {
-        $authorizer ??= fn(AuthorizerContext $context) => in_array($context->permission, ['model:read', 'model:create', 'model:update', 'model:delete']);
+        $authorizer ??= fn() => true;
 
         $normalizedResources = array_map(function (ModelResource|string $resource): ModelResource {
             return is_string($resource) ? self::of($resource) : $resource;
@@ -356,8 +356,8 @@ readonly class ModelResource
 
     /**
      * Builds the permissions map for a schema response, filtering by what the authorizer grants.
-     * For each CRUD key a RequestContext is built with the corresponding HTTP method and route prefix.
-     * RequestContext is bound as an optional injectable — authorizers that don't declare it still work.
+     * For each CRUD key a AuthorizerContext is built with the corresponding HTTP method and route prefix.
+     * AuthorizerContext is bound as an optional injectable — authorizers that don't declare it still work.
      *
      * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
      * @param list<ResourceAction> $actions
