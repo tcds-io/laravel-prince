@@ -66,7 +66,7 @@ final class ModelResourceBuilder
      * @param bool $globalSearch Whether to include this resource in the global /search route
      * @param string|null $segment Custom URL segment (defaults to the model's table name)
      * @param string|null $foreignKey FK column referencing the parent table (only meaningful when used inside a $resources callback; defaults to {singular_parent_table}_id)
-     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions Maps each action to the permission string it requires
+     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $permissions Maps each action to the permission string it requires
      * @param list<ResourceAction> $actions Extra routes attached to this resource
      * @param array<string, class-string> $events Lifecycle event overrides — merged with defaults (creating, created, updating, updated, deleting, deleted)
      * @param int|null $maxLimit Maximum page size for this resource — overrides the builder default when set
@@ -77,7 +77,7 @@ final class ModelResourceBuilder
         bool $globalSearch = false,
         ?string $segment = null,
         ?string $foreignKey = null,
-        array $resourcePermissions = [
+        array $permissions = [
             'read' => 'public',
             'create' => 'public',
             'update' => 'public',
@@ -87,7 +87,7 @@ final class ModelResourceBuilder
         array $events = [],
         ?int $maxLimit = null,
     ): self {
-        return $this->addResource(model: $model, resources: $resources, globalSearch: $globalSearch, segment: $segment, foreignKey: $foreignKey, resourcePermissions: $resourcePermissions, actions: $actions, events: $events, maxLimit: $maxLimit);
+        return $this->addResource(model: $model, resources: $resources, globalSearch: $globalSearch, segment: $segment, foreignKey: $foreignKey, permissions: $permissions, actions: $actions, events: $events, maxLimit: $maxLimit);
     }
 
     /**
@@ -96,7 +96,7 @@ final class ModelResourceBuilder
      *
      * @param class-string<Model> $model
      * @param string|null $foreignKey FK column on the child model (defaults to {singular_parent_table}_id)
-     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
+     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $permissions
      * @param list<ResourceAction> $actions
      * @param array<string, class-string> $events
      * @param int|null $maxLimit Maximum page size for this resource — overrides the builder default when set
@@ -106,7 +106,7 @@ final class ModelResourceBuilder
         ?string $foreignKey = null,
         ?string $segment = null,
         bool $embed = false,
-        array $resourcePermissions = [
+        array $permissions = [
             'read' => 'public',
             'create' => 'public',
             'update' => 'public',
@@ -116,7 +116,7 @@ final class ModelResourceBuilder
         array $events = [],
         ?int $maxLimit = null,
     ): self {
-        return $this->addResource(model: $model, segment: $segment, foreignKey: $foreignKey, embed: $embed, resourcePermissions: $resourcePermissions, actions: $actions, events: $events, belongsTo: false, maxLimit: $maxLimit);
+        return $this->addResource(model: $model, segment: $segment, foreignKey: $foreignKey, embed: $embed, permissions: $permissions, actions: $actions, events: $events, belongsTo: false, maxLimit: $maxLimit);
     }
 
     /**
@@ -126,7 +126,7 @@ final class ModelResourceBuilder
      *
      * @param class-string<Model> $model
      * @param string|null $column Column on the parent model holding the FK (defaults to {singular_related_table}_id)
-     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
+     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $permissions
      * @param int|null $maxLimit Maximum page size for this resource — overrides the builder default when set
      */
     public function belongsTo(
@@ -134,7 +134,7 @@ final class ModelResourceBuilder
         ?string $column = null,
         ?string $segment = null,
         bool $embed = false,
-        array $resourcePermissions = [
+        array $permissions = [
             'read' => 'public',
             'create' => 'public',
             'update' => 'public',
@@ -142,13 +142,13 @@ final class ModelResourceBuilder
         ],
         ?int $maxLimit = null,
     ): self {
-        return $this->addResource(model: $model, segment: $segment, foreignKey: $column, embed: $embed, resourcePermissions: $resourcePermissions, belongsTo: true, maxLimit: $maxLimit);
+        return $this->addResource(model: $model, segment: $segment, foreignKey: $column, embed: $embed, permissions: $permissions, belongsTo: true, maxLimit: $maxLimit);
     }
 
     /**
      * @param class-string<Model> $model
      * @param (Closure(self): void)|null $resources
-     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $resourcePermissions
+     * @param array{read?: Permission, create?: Permission, update?: Permission, delete?: Permission} $permissions
      * @param list<ResourceAction> $actions
      * @param array<string, class-string> $events
      * @param int|null $maxLimit Resource-specific override; falls back to the builder default when null
@@ -160,7 +160,7 @@ final class ModelResourceBuilder
         ?string $segment = null,
         ?string $foreignKey = null,
         bool $embed = false,
-        array $resourcePermissions = [
+        array $permissions = [
             'read' => 'public',
             'create' => 'public',
             'update' => 'public',
@@ -191,7 +191,7 @@ final class ModelResourceBuilder
         $resource = ModelResource::of(
             model: $model,
             authorizer: $this->authorizer,
-            resourcePermissions: $resourcePermissions,
+            permissions: $permissions,
             resources: $nestedResources,
             segment: $segment,
             globalSearch: $globalSearch,

@@ -477,7 +477,7 @@ ModelResourceBuilder::create()
     ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, Auth::user()?->permissions ?? []))
     ->resource(
         model: Invoice::class,
-        resourcePermissions: [
+        permissions: [
             'read'   => 'invoices:read',
             'create' => 'invoices:write',
             'update' => 'invoices:write',
@@ -493,7 +493,7 @@ Besides regular permission strings, one **reserved keyword** controls a special 
 |------------|------------------------------------------------------------------------------|
 | `'public'` | Route is registered **without** permission middleware — anyone can access it |
 
-To disable an endpoint entirely, simply **omit its key** from `resourcePermissions`. The route will not be registered
+To disable an endpoint entirely, simply **omit its key** from `permissions`. The route will not be registered
 and the framework returns 404.
 
 > **Reserved word:** `'public'` must not be used as an actual permission name in your application. It is intercepted by
@@ -505,7 +505,7 @@ ModelResourceBuilder::create()
     ->authorizer(fn(RequestContext $ctx) => in_array($ctx->permission, $user->permissions))
     ->resource(
         model: Product::class,
-        resourcePermissions: [
+        permissions: [
             'read' => 'public',
         ],
     )
@@ -570,7 +570,7 @@ ModelResourceBuilder::create()
     ->authorizer(fn(AuthorizerContext $ctx) => in_array($ctx->permission, $user->permissions))
     ->resource(
         model: Invoice::class,
-        resourcePermissions: [
+        permissions: [
             'read'   => 'invoices:read',
             'create' => 'invoices:write',
             'update' => 'invoices:write',

@@ -49,13 +49,13 @@ class ModelResourceGlobalSchemaTest extends ModelResourceNestedTestCase
     {
         ModelResourceBuilder::create()
             ->authorizer(fn(AuthorizerContext $context) => $context->permission === 'default:model.read')
-            ->resource(TestInvoice::class, resourcePermissions: [
+            ->resource(TestInvoice::class, permissions: [
                 'read' => 'default:model.read',
                 'create' => 'default:model.create',
                 'update' => 'default:model.update',
                 'delete' => 'default:model.delete',
             ])
-            ->resource(TestItem::class, segment: 'items', resourcePermissions: [
+            ->resource(TestItem::class, segment: 'items', permissions: [
                 'read' => 'default:model.read',
                 'create' => 'default:model.create',
                 'update' => 'default:model.update',

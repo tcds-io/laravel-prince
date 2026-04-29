@@ -38,7 +38,7 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     #[Test]
     public function schema_omits_permissions_for_disabled_endpoints(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', permissions: [
             'read' => 'model:read',
         ])->routes();
 
@@ -54,7 +54,7 @@ class ModelResourceSchemaTest extends ModelResourceTestCase
     #[Test]
     public function schema_omits_permissions_the_user_does_not_hold(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', permissions: [
             'read' => 'model:read',
             'create' => 'model:create',
             'update' => 'model:update',

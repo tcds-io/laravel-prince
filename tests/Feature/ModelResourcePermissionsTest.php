@@ -20,7 +20,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function list_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => false, resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn() => false, permissions: [
             'read' => 'model:read',
         ])->routes();
 
@@ -32,7 +32,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function list_is_accessible_with_read_permission(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', permissions: [
             'read' => 'model:read',
         ])->routes();
 
@@ -44,7 +44,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function get_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => false, resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn() => false, permissions: [
             'read' => 'model:read',
         ])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
@@ -57,7 +57,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function get_is_accessible_with_read_permission(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:read', permissions: [
             'read' => 'model:read',
         ])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
@@ -72,7 +72,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function create_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => false, resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn() => false, permissions: [
             'create' => 'model:create',
         ])->routes();
 
@@ -84,7 +84,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function create_is_accessible_with_create_permission(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:create', resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:create', permissions: [
             'create' => 'model:create',
         ])->routes();
 
@@ -98,7 +98,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function update_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => false, resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn() => false, permissions: [
             'update' => 'model:update',
         ])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
@@ -111,7 +111,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function update_is_accessible_with_update_permission(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:update', resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:update', permissions: [
             'update' => 'model:update',
         ])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
@@ -126,7 +126,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function delete_returns_403_when_permission_is_missing(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => false, resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn() => false, permissions: [
             'delete' => 'model:delete',
         ])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
@@ -139,7 +139,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function delete_is_accessible_with_delete_permission(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:delete', resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn(AuthorizerContext $context) => $context->permission === 'model:delete', permissions: [
             'delete' => 'model:delete',
         ])->routes();
         $invoice = TestInvoice::create(['title' => 'Invoice A', 'amount' => 100]);
@@ -154,7 +154,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function public_permission_allows_access_without_matching_user_permission(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => false, resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn() => false, permissions: [
             'read' => 'public',
             'create' => 'model:create',
             'update' => 'model:update',
@@ -171,7 +171,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function missing_permission_key_does_not_register_route(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => true, resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn() => true, permissions: [
             'read' => 'model:read',
             'update' => 'model:update',
             'delete' => 'model:delete',
@@ -185,7 +185,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function missing_permission_key_still_allows_other_actions(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => true, resourcePermissions: [
+        ModelResource::of(TestInvoice::class, authorizer: fn() => true, permissions: [
             'read' => 'model:read',
             'update' => 'model:update',
             'delete' => 'model:delete',
@@ -199,7 +199,7 @@ class ModelResourcePermissionsTest extends ModelResourceTestCase
     #[Test]
     public function schema_is_accessible_even_when_all_permission_keys_are_missing(): void
     {
-        ModelResource::of(TestInvoice::class, authorizer: fn() => false, resourcePermissions: [])->routes();
+        ModelResource::of(TestInvoice::class, authorizer: fn() => false, permissions: [])->routes();
 
         $response = $this->getJson('/invoices/_schema');
 
