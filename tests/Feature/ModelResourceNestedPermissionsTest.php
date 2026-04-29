@@ -20,6 +20,12 @@ class ModelResourceNestedPermissionsTest extends ModelResourceNestedTestCase
         ModelResource::of(
             TestInvoice::class,
             authorizer: fn(AuthorizerContext $context) => in_array($context->permission, ['model:create', 'model:update', 'model:delete']),
+            resourcePermissions: [
+                'read'   => 'model:read',
+                'create' => 'model:create',
+                'update' => 'model:update',
+                'delete' => 'model:delete',
+            ],
             resources: [ModelResource::of(TestItem::class)],
         )->routes();
     }
