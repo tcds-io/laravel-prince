@@ -8,6 +8,7 @@ use Tcds\Io\Prince\AuthorizerContext;
 use Tcds\Io\Prince\ModelResource;
 use Tcds\Io\Prince\ResourceAction;
 use Test\Tcds\Io\Prince\Stubs\Actions\ExportInvoicesAction;
+use Test\Tcds\Io\Prince\Stubs\Actions\InvoiceIdAction;
 use Test\Tcds\Io\Prince\Stubs\Actions\SearchCustomAction;
 use Test\Tcds\Io\Prince\Stubs\Actions\SendInvoiceAction;
 
@@ -17,6 +18,7 @@ class ModelResourceActionsTest extends ModelResourceTestCase
     {
         ModelResource::of(
             model: TestInvoice::class,
+            authorizer: fn(AuthorizerContext $context) => in_array($context->permission, ['model:read', 'model:create', 'model:update', 'model:delete', 'invoices:send']),
             actions: [
                 ResourceAction::get(
                     path: '/export',
@@ -31,8 +33,11 @@ class ModelResourceActionsTest extends ModelResourceTestCase
                     action: SendInvoiceAction::class,
                     permission: 'invoices:send',
                 ),
+                ResourceAction::get(
+                    path: '/{id}/id',
+                    action: InvoiceIdAction::class,
+                ),
             ],
-            authorizer: fn(AuthorizerContext $context) => in_array($context->permission, ['model:read', 'model:create', 'model:update', 'model:delete', 'invoices:send']),
         )->routes();
     }
 
@@ -101,5 +106,15 @@ class ModelResourceActionsTest extends ModelResourceTestCase
 
         $response->assertStatus(200);
         $response->assertJson(['q' => 'hello']);
+    }
+
+    public function test_item_action_injects_route_params_by_name(): void
+    {
+        $invoice = TestInvoice::create(['title' => 'Test', 'amount' => 10.0]);
+
+        $response = $this->get('/invoices/' . $invoice->id . '/id');
+
+        $response->assertStatus(200);
+        $response->assertJson(['id' => (string) $invoice->id]);
     }
 }

@@ -766,12 +766,21 @@ readonly class ModelResource
         if ($action->isItemAction()) {
             $closure = function (Request $request) use ($model, $action, $constraints) {
                 $id = self::routeId($request, 'id');
-                $query = $model::query();
+                /** @var array<string, mixed> $routeParams */
+                $routeParams = $request->route()->parameters();
 
-                foreach ($constraints as ['param' => $param, 'fk' => $fk, 'requiredPermission' => $required, 'authorizer' => $authorizer]) {
+                foreach ($constraints as ['requiredPermission' => $required, 'authorizer' => $authorizer]) {
                     if ($required !== 'public' && !app()->call($authorizer, [AuthorizerContext::class => new AuthorizerContext($request->method(), $request->getPathInfo(), $required)])) {
                         throw new AccessDeniedHttpException();
                     }
+                }
+
+                if (!self::actionNeedsModel($action->action, $model)) {
+                    return app()->call($action->action, $routeParams);
+                }
+
+                $query = $model::query();
+                foreach ($constraints as ['fk' => $fk, 'param' => $param]) {
                     $query->where($fk, self::routeId($request, $param));
                 }
 
@@ -780,7 +789,7 @@ readonly class ModelResource
                     throw new ResourceNotFoundException($id);
                 }
 
-                return app()->call($action->action, [$model => $record]);
+                return app()->call($action->action, array_merge([$model => $record], $routeParams));
             };
         } else {
             $closure = function (Request $request) use ($action, $constraints) {
@@ -791,7 +800,10 @@ readonly class ModelResource
                     ModelResourceQuery::findOrThrow($parentModel, self::routeId($request, $param));
                 }
 
-                return app()->call($action->action);
+                /** @var array<string, mixed> $routeParams */
+                $routeParams = $request->route()->parameters();
+
+                return app()->call($action->action, $routeParams);
             };
         }
 
@@ -946,6 +958,27 @@ readonly class ModelResource
             'parser' => fn(int|string $value) => $type::from($value),
             'values' => array_map(fn(BackedEnum $v) => (string) $v->value, $type::cases()),
         ];
+    }
+
+    /**
+     * Returns true when the action's __invoke method declares a parameter typed as $modelClass.
+     * Used to skip the DB query when the action only needs the raw route parameters (e.g. string $id).
+     */
+    private static function actionNeedsModel(string $actionClass, string $modelClass): bool
+    {
+        try {
+            $method = new \ReflectionMethod($actionClass, '__invoke');
+            foreach ($method->getParameters() as $param) {
+                $type = $param->getType();
+                if ($type instanceof \ReflectionNamedType && $type->getName() === $modelClass) {
+                    return true;
+                }
+            }
+        } catch (\ReflectionException) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
