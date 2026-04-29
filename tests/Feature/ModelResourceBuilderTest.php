@@ -47,7 +47,7 @@ class ModelResourceBuilderTest extends ModelResourceNestedTestCase
     #[Test]
     public function builder_applies_permissions_to_all_resources(): void
     {
-        ModelResourceBuilder::create()->authorizer(fn() => false)->resource(TestInvoice::class, resourcePermissions: [
+        ModelResourceBuilder::create()->authorizer(fn() => false)->resource(TestInvoice::class, permissions: [
             'read' => 'model:read',
         ])->routes();
 

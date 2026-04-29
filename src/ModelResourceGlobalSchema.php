@@ -10,12 +10,12 @@ use Illuminate\Support\Facades\Route;
 readonly class ModelResourceGlobalSchema
 {
     /**
-     * @param list<array{table: string, schema: Closure(): list<ColumnSchema>, resources: list<string>, resourcePermissions: array{read?: string, create?: string, update?: string, delete?: string}, actions: list<ResourceAction>, authorizer: Closure}> $entries
+     * @param list<array{table: string, schema: Closure(): list<ColumnSchema>, resources: list<string>, permissions: array{read?: string, create?: string, update?: string, delete?: string}, actions: list<ResourceAction>, authorizer: Closure}> $entries
      */
     private function __construct(private array $entries) {}
 
     /**
-     * @param list<array{table: string, schema: Closure(): list<ColumnSchema>, resources: list<string>, resourcePermissions: array{read?: string, create?: string, update?: string, delete?: string}, actions: list<ResourceAction>, authorizer: Closure}> $entries
+     * @param list<array{table: string, schema: Closure(): list<ColumnSchema>, resources: list<string>, permissions: array{read?: string, create?: string, update?: string, delete?: string}, actions: list<ResourceAction>, authorizer: Closure}> $entries
      */
     public static function of(array $entries): self
     {
@@ -38,7 +38,7 @@ readonly class ModelResourceGlobalSchema
                     'schema'      => ($entry['schema'])(),
                     'permissions' => ModelResource::buildPermissionsMap(
                         $entry['table'],
-                        $entry['resourcePermissions'],
+                        $entry['permissions'],
                         $entry['actions'],
                         $entry['authorizer'],
                     ),

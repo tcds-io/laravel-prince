@@ -61,12 +61,4 @@ readonly class ResourceAction
     {
         return new self('DELETE', $path, $action, $permission);
     }
-
-    /**
-     * Returns true when the path contains {id}, meaning the action operates on a single record.
-     */
-    public function isItemAction(): bool
-    {
-        return str_contains($this->path, '{id}');
-    }
 }

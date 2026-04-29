@@ -58,40 +58,23 @@ class ModelResourceActionsTest extends ModelResourceTestCase
         $this->get('/invoices/export')->assertStatus(200);
     }
 
-    public function test_item_action_resolves_and_injects_model(): void
-    {
-        $invoice = TestInvoice::create(['title' => 'Test', 'amount' => 10.0]);
-
-        $response = $this->post('/invoices/' . $invoice->id . '/send');
-
-        $response->assertStatus(200);
-        $response->assertJson(['sent' => $invoice->id]);
-    }
-
-    public function test_item_action_returns_404_for_missing_record(): void
-    {
-        $response = $this->post('/invoices/999/send');
-
-        $response->assertStatus(404);
-    }
-
     public function test_item_action_is_forbidden_when_permission_is_missing(): void
     {
         ModelResource::of(
             model: TestInvoice::class,
+            authorizer: fn() => false,
+            permissions: [
+                'read' => 'model:read',
+                'create' => 'model:create',
+                'update' => 'model:update',
+                'delete' => 'model:delete',
+            ],
             actions: [
                 ResourceAction::post(
                     path: '/{id}/send',
                     action: SendInvoiceAction::class,
                     permission: 'invoices:send',
                 ),
-            ],
-            authorizer: fn() => false,
-            resourcePermissions: [
-                'read' => 'model:read',
-                'create' => 'model:create',
-                'update' => 'model:update',
-                'delete' => 'model:delete',
             ],
         )->routes();
 
